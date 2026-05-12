@@ -3,6 +3,19 @@
 # Install: source this file in ~/.bashrc, e.g.:
 #   source /path/to/fnclaude.bash
 
+# Helper: emit basenames of all git worktrees in the current repo.
+# Outputs nothing (no error) when not in a git repo.
+_fnclaude_worktree_names() {
+    local line name
+    while IFS= read -r line; do
+        if [[ "$line" == worktree\ * ]]; then
+            name="${line#worktree }"
+            name="${name##*/}"  # basename
+            printf '%s\n' "$name"
+        fi
+    done < <(git worktree list --porcelain 2>/dev/null)
+}
+
 _fnclaude_complete() {
     local cur prev words cword
     _init_completion || return
@@ -42,12 +55,11 @@ _fnclaude_complete() {
             COMPREPLY=( $(compgen -W "classic" -- "$cur") )
             return
             ;;
-        # -w / --worktree is a claude passthrough flag.
-        # TODO(worktree-completion): replace the empty return below with a call
-        # to a helper that runs `git worktree list --porcelain` and extracts
-        # worktree names, then feeds them to compgen.  Keep this case block as
-        # the designated extension point.
         --worktree|-w)
+            # Complete existing worktree basenames from the current repo.
+            local -a wt_names
+            mapfile -t wt_names < <(_fnclaude_worktree_names)
+            COMPREPLY=( $(compgen -W "${wt_names[*]}" -- "$cur") )
             return
             ;;
         --from-pr|-P|--remote-control|-R)

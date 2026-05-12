@@ -9,6 +9,22 @@ complete -c fnclaude -f
 complete -c fnc     -f
 
 # ---------------------------------------------------------------------------
+# Helper: emit basenames of all git worktrees in the current repo.
+# Outputs nothing (no error) when not in a git repo.
+# ---------------------------------------------------------------------------
+
+function __fnclaude_worktree_names
+    set -l names
+    for line in (git worktree list --porcelain 2>/dev/null)
+        if string match -q 'worktree *' -- $line
+            set -l path (string replace 'worktree ' '' -- $line)
+            set names $names (basename $path)
+        end
+    end
+    string join \n $names
+end
+
+# ---------------------------------------------------------------------------
 # Flags — no value
 # ---------------------------------------------------------------------------
 
@@ -45,12 +61,8 @@ complete -c fnclaude -s P -l from-pr        -d 'start from a PR (optional PR num
 complete -c fnclaude -s R -l remote-control -d 'enable remote control (optional name)'
 complete -c fnclaude -s T -l tmux -a 'classic' -d 'set tmux mode (optional: classic)'
 
-# -w / --worktree is a claude passthrough flag.
-# TODO(worktree-completion): replace this bare flag registration with one that
-# adds `-a '(__fnclaude_worktree_names)'` where __fnclaude_worktree_names runs
-# `git worktree list --porcelain` and extracts the worktree names.  This is
-# the designated extension point; keep the function name stable.
-complete -c fnclaude -s w -l worktree -d 'use git worktree (claude flag)'
+# -w / --worktree: complete existing worktree basenames from the current repo.
+complete -c fnclaude -s w -l worktree -r -a '(__fnclaude_worktree_names)' -d 'use git worktree'
 
 # ---------------------------------------------------------------------------
 # Positional argument completion
@@ -168,7 +180,7 @@ complete -c fnc -s M -l permission-mode -r -a 'acceptEdits auto bypassPermission
 complete -c fnc -s P -l from-pr            -d 'start from a PR (optional PR number or URL)'
 complete -c fnc -s R -l remote-control     -d 'enable remote control (optional name)'
 complete -c fnc -s T -l tmux -a 'classic'  -d 'set tmux mode (optional: classic)'
-complete -c fnc -s w -l worktree           -d 'use git worktree (claude flag)'
+complete -c fnc -s w -l worktree -r -a '(__fnclaude_worktree_names)' -d 'use git worktree'
 complete -c fnc -n '__fnclaude_no_positional' -a 'opus'   -d 'use claude-opus model'
 complete -c fnc -n '__fnclaude_no_positional' -a 'sonnet' -d 'use claude-sonnet model'
 complete -c fnc -n '__fnclaude_no_positional' -a 'haiku'  -d 'use claude-haiku model'
