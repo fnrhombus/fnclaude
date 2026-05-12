@@ -666,16 +666,30 @@ func buildArgv(a Args, shellCWD string, cfg Config) []string {
 	}
 
 	// Auto-inject --tmux based on auto.tmux config.
-	// WorktreeSet tells us the user passed -w/--worktree.
-	// WorktreeMatched tells us whether we intercepted it (cwd swapped) or
-	// passed it through (new worktree being created).
+	//
+	// claude requires --worktree to be present when --tmux is used. The two
+	// auto modes account for that:
+	//
+	//   "always"   — inject BOTH --worktree (bare; claude auto-names the wt)
+	//                AND --tmux on every launch. Effectively: every session
+	//                becomes its own wt+tmux pair.
+	//   "worktree" — inject --tmux only when the user passed -w / --worktree
+	//                for a NEW worktree (a.WorktreeSet && !a.WorktreeMatched).
+	//                --worktree is already in the argv in that case.
+	//   "never"    — no-op.
 	if !tokenInPassthrough(a.Passthrough, "--tmux") && !a.NoTmux {
 		switch cfg.Auto.Tmux {
 		case "always":
+			// Don't add --worktree if the user already passed it or fnclaude
+			// intercepted it (a.WorktreeSet covers both passthrough and matched).
+			if !a.WorktreeSet && !tokenInPassthrough(a.Passthrough, "--worktree") {
+				argv = append(argv, "--worktree")
+			}
 			argv = append(argv, "--tmux")
 		case "worktree":
 			// Add --tmux only when -w is creating a new worktree (not when we
-			// matched an existing one and swapped cwd).
+			// matched an existing one and swapped cwd). --worktree is already
+			// in the passthrough at this point — claude's constraint is satisfied.
 			if a.WorktreeSet && !a.WorktreeMatched {
 				argv = append(argv, "--tmux")
 			}
