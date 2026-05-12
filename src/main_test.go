@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -363,6 +364,44 @@ func TestBuildArgv_RelativeExtraDirResolved(t *testing.T) {
 	assertArgv(t, argv, want)
 }
 
+func TestBuildArgv_McpConfigExists_Injected(t *testing.T) {
+	// Create an extra-dir with a .mcp.json file; buildArgv should inject --mcp-config.
+	dir := t.TempDir()
+	mcpPath := filepath.Join(dir, ".mcp.json")
+	if err := os.WriteFile(mcpPath, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := Args{
+		CWD:       "/p/main",
+		ExtraDirs: []string{dir},
+	}
+	argv := buildArgv(a, "/shell", defaultConfig())
+	assertContains(t, argv, "--mcp-config")
+	assertContains(t, argv, mcpPath)
+}
+
+func TestBuildArgv_SettingsJsonExists_Injected(t *testing.T) {
+	// Create an extra-dir with .claude/settings.json; buildArgv should inject --settings.
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	settingsPath := filepath.Join(claudeDir, "settings.json")
+	if err := os.WriteFile(settingsPath, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	a := Args{
+		CWD:       "/p/main",
+		ExtraDirs: []string{dir},
+	}
+	argv := buildArgv(a, "/shell", defaultConfig())
+	assertContains(t, argv, "--settings")
+	assertContains(t, argv, settingsPath)
+}
+
 func TestBuildArgv_SettingSourcesSuppressesSettings(t *testing.T) {
 	// Even if a settings file existed this confirms the logic path.
 	// Since no files exist on disk here, --settings wouldn't appear anyway,
@@ -711,6 +750,26 @@ func TestParseArgs_ShortOptional_AtEOF_NoValue(t *testing.T) {
 	if len(a.Passthrough) != 1 || a.Passthrough[0] != "--tmux" {
 		t.Errorf("Passthrough: got %v, want [--tmux]", a.Passthrough)
 	}
+}
+
+func TestParseArgs_ShortUnknown_PassThrough(t *testing.T) {
+	// -Z is not in any short-flag map; should pass through verbatim
+	// (claude will reject it or interpret it).
+	a, err := parseArgs([]string{"/p/x", "-Z"}, testHome)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertContains(t, a.Passthrough, "-Z")
+}
+
+func TestParseArgs_ShortUnknownEquals_PassThrough(t *testing.T) {
+	// -Z=val: Z is not a known value-taking flag; the -X=val branch falls
+	// through and emits the original token unchanged.
+	a, err := parseArgs([]string{"/p/x", "-Z=val"}, testHome)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertContains(t, a.Passthrough, "-Z=val")
 }
 
 func TestParseArgs_ShortAllowedTools(t *testing.T) {
@@ -1097,6 +1156,27 @@ func TestApplyWorktreeIntercept_MatchedExisting_SwapsCWD(t *testing.T) {
 	}
 	assertNotContains(t, a.Passthrough, "--worktree")
 	assertNotContains(t, a.Passthrough, "-w")
+}
+
+func TestApplyWorktreeIntercept_RelativeCWD_ResolvedAgainstShellCWD(t *testing.T) {
+	// Relative CWD: applyWorktreeIntercept should resolve it against shellCWD
+	// before invoking gitRunner. We assert by capturing the dir arg the runner
+	// receives.
+	orig := gitRunner
+	defer func() { gitRunner = orig }()
+	var gotDir string
+	gitRunner = func(dir string, args ...string) ([]byte, error) {
+		gotDir = dir
+		return []byte(worktreeListOutput([]string{"/repo/main", "/repo/feat"})), nil
+	}
+
+	a := Args{CWD: "relative/sub", WorktreeSet: true, WorktreeArg: "feat"}
+	applyWorktreeIntercept(&a, "/shell/here")
+
+	want := "/shell/here/relative/sub"
+	if gotDir != want {
+		t.Errorf("gitRunner dir: got %q, want %q", gotDir, want)
+	}
 }
 
 func TestApplyWorktreeIntercept_Unmatched_PassthroughPlusName(t *testing.T) {

@@ -158,6 +158,55 @@ func TestShouldAutoName(t *testing.T) {
 	}
 }
 
+// ── extractPrompt ─────────────────────────────────────────────────────────
+
+func TestExtractPrompt(t *testing.T) {
+	cases := []struct {
+		name        string
+		passthrough []string
+		want        string
+	}{
+		{
+			name:        "first non-empty token after --",
+			passthrough: []string{"--verbose", "--", "fix login bug", "extra"},
+			want:        "fix login bug",
+		},
+		{
+			name:        "no dash-dash present",
+			passthrough: []string{"--verbose", "something"},
+			want:        "",
+		},
+		{
+			name:        "dash-dash at end, no tokens after",
+			passthrough: []string{"--verbose", "--"},
+			want:        "",
+		},
+		{
+			name:        "dash-dash followed only by empty strings",
+			passthrough: []string{"--", "", "", ""},
+			want:        "",
+		},
+		{
+			name:        "empty tokens skipped, first non-empty wins",
+			passthrough: []string{"--", "", "real prompt"},
+			want:        "real prompt",
+		},
+		{
+			name:        "empty passthrough",
+			passthrough: []string{},
+			want:        "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := extractPrompt(tc.passthrough)
+			if got != tc.want {
+				t.Errorf("extractPrompt(%v) = %q, want %q", tc.passthrough, got, tc.want)
+			}
+		})
+	}
+}
+
 // ── heuristicName ─────────────────────────────────────────────────────────
 
 func TestHeuristicName(t *testing.T) {
@@ -455,6 +504,28 @@ func TestGenerateName_MissingAPIKey_WarnsAndFallsBack(t *testing.T) {
 	}
 	if !warningsContain("ANTHROPIC_API_KEY not set") {
 		t.Errorf("expected API-key warning to be deferred, got: %v", deferredWarnings)
+	}
+}
+
+func TestGenerateName_ZeroTimeout_FallsBackToDefault(t *testing.T) {
+	// cfg.Timeout = 0 should trigger the "<=0 → 3s default" branch.
+	resetWarnings(t)
+	cfg := defaultConfig().Name
+	cfg.Timeout = 0
+	apiKey := "test-key"
+
+	called := false
+	llmFn := func(_ context.Context, model, prompt string) (string, error) {
+		called = true
+		return "fix-login-bug", nil
+	}
+
+	got := generateName("fix the login bug", cfg, apiKey, llmFn)
+	if !called {
+		t.Error("llmFn was not invoked")
+	}
+	if got != "fix-login-bug" {
+		t.Errorf("got %q, want %q", got, "fix-login-bug")
 	}
 }
 
