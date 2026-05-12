@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -337,31 +335,27 @@ func TestSanitizeName(t *testing.T) {
 
 // ── generateName ──────────────────────────────────────────────────────────
 
-// stderrCapture replaces os.Stderr-style writes via a pipe trick.
-// Instead, generateName accepts *os.File so we use a temp file in tests.
-func tempStderrFile(t *testing.T) *os.File {
+// resetWarnings clears the deferred-warnings buffer at the start of a test
+// and restores it (empty) at cleanup. Tests inspect deferredWarnings directly
+// after calling generateName.
+func resetWarnings(t *testing.T) {
 	t.Helper()
-	f, err := os.CreateTemp(t.TempDir(), "stderr")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { f.Close() })
-	return f
+	deferredWarnings = nil
+	t.Cleanup(func() { deferredWarnings = nil })
 }
 
-func readStderrFile(t *testing.T, f *os.File) string {
-	t.Helper()
-	if _, err := f.Seek(0, 0); err != nil {
-		t.Fatal(err)
+// warningsContain reports whether any queued warning contains the substring.
+func warningsContain(needle string) bool {
+	for _, w := range deferredWarnings {
+		if strings.Contains(w, needle) {
+			return true
+		}
 	}
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(f); err != nil {
-		t.Fatal(err)
-	}
-	return buf.String()
+	return false
 }
 
 func TestGenerateName_HappyPath(t *testing.T) {
+	resetWarnings(t)
 	cfg := defaultConfig().Name
 	apiKey := "test-key"
 
@@ -369,18 +363,17 @@ func TestGenerateName_HappyPath(t *testing.T) {
 		return "fix-login-bug", nil
 	}
 
-	stderr := tempStderrFile(t)
-	got := generateName("fix the login bug", cfg, apiKey, llmFn, stderr)
+	got := generateName("fix the login bug", cfg, apiKey, llmFn)
 	if got != "fix-login-bug" {
 		t.Errorf("got %q, want %q", got, "fix-login-bug")
 	}
-	// No warning expected.
-	if s := readStderrFile(t, stderr); s != "" {
-		t.Errorf("unexpected stderr: %q", s)
+	if len(deferredWarnings) != 0 {
+		t.Errorf("unexpected warnings: %v", deferredWarnings)
 	}
 }
 
 func TestGenerateName_LLMOutputSanitized(t *testing.T) {
+	resetWarnings(t)
 	cfg := defaultConfig().Name
 	apiKey := "test-key"
 
@@ -388,20 +381,19 @@ func TestGenerateName_LLMOutputSanitized(t *testing.T) {
 		return "Fix Login Bug!!!", nil
 	}
 
-	stderr := tempStderrFile(t)
-	got := generateName("fix the login bug", cfg, apiKey, llmFn, stderr)
+	got := generateName("fix the login bug", cfg, apiKey, llmFn)
 	if got != "fix-login-bug" {
 		t.Errorf("got %q, want %q", got, "fix-login-bug")
 	}
 }
 
 func TestGenerateName_Timeout_FallsBackToHeuristic(t *testing.T) {
+	resetWarnings(t)
 	cfg := defaultConfig().Name
 	cfg.Timeout = 10 * time.Millisecond
 	apiKey := "test-key"
 
 	llmFn := func(ctx context.Context, model, prompt string) (string, error) {
-		// Simulate a timeout by checking the context.
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
@@ -410,19 +402,17 @@ func TestGenerateName_Timeout_FallsBackToHeuristic(t *testing.T) {
 		}
 	}
 
-	stderr := tempStderrFile(t)
-	got := generateName("fix the login bug", cfg, apiKey, llmFn, stderr)
-	// Should fall back to heuristic (no stop words, so: fix-login-bug)
+	got := generateName("fix the login bug", cfg, apiKey, llmFn)
 	if got != "fix-login-bug" {
 		t.Errorf("got %q, want %q", got, "fix-login-bug")
 	}
-	// No warning about missing key.
-	if s := readStderrFile(t, stderr); s != "" {
-		t.Errorf("unexpected stderr: %q", s)
+	if len(deferredWarnings) != 0 {
+		t.Errorf("unexpected warnings on timeout (API errors should be silent): %v", deferredWarnings)
 	}
 }
 
 func TestGenerateName_APIError_FallsBackToHeuristic(t *testing.T) {
+	resetWarnings(t)
 	cfg := defaultConfig().Name
 	apiKey := "test-key"
 
@@ -430,18 +420,17 @@ func TestGenerateName_APIError_FallsBackToHeuristic(t *testing.T) {
 		return "", errors.New("401 Unauthorized")
 	}
 
-	stderr := tempStderrFile(t)
-	got := generateName("add dark mode", cfg, apiKey, llmFn, stderr)
+	got := generateName("add dark mode", cfg, apiKey, llmFn)
 	if got != "add-dark-mode" {
 		t.Errorf("got %q, want %q", got, "add-dark-mode")
 	}
-	// API errors are silent.
-	if s := readStderrFile(t, stderr); s != "" {
-		t.Errorf("unexpected stderr output: %q", s)
+	if len(deferredWarnings) != 0 {
+		t.Errorf("API errors should be silent, got: %v", deferredWarnings)
 	}
 }
 
 func TestGenerateName_EmptyLLMOutput_FallsBackToHeuristic(t *testing.T) {
+	resetWarnings(t)
 	cfg := defaultConfig().Name
 	apiKey := "test-key"
 
@@ -449,39 +438,37 @@ func TestGenerateName_EmptyLLMOutput_FallsBackToHeuristic(t *testing.T) {
 		return "!!!", nil // sanitizes to ""
 	}
 
-	stderr := tempStderrFile(t)
-	got := generateName("refactor auth", cfg, apiKey, llmFn, stderr)
+	got := generateName("refactor auth", cfg, apiKey, llmFn)
 	if got != "refactor-auth" {
 		t.Errorf("got %q, want %q", got, "refactor-auth")
 	}
 }
 
 func TestGenerateName_MissingAPIKey_WarnsAndFallsBack(t *testing.T) {
+	resetWarnings(t)
 	cfg := defaultConfig().Name
 	apiKey := ""
 
-	stderr := tempStderrFile(t)
-	got := generateName("add dark mode", cfg, apiKey, nil, stderr)
+	got := generateName("add dark mode", cfg, apiKey, nil)
 	if got != "add-dark-mode" {
 		t.Errorf("got %q, want %q", got, "add-dark-mode")
 	}
-	s := readStderrFile(t, stderr)
-	if !strings.Contains(s, "ANTHROPIC_API_KEY not set") {
-		t.Errorf("expected API key warning on stderr, got: %q", s)
+	if !warningsContain("ANTHROPIC_API_KEY not set") {
+		t.Errorf("expected API-key warning to be deferred, got: %v", deferredWarnings)
 	}
 }
 
 func TestGenerateName_MissingAPIKey_QuietMode_NoWarning(t *testing.T) {
+	resetWarnings(t)
 	cfg := defaultConfig().Name
 	cfg.QuietMissingAPIKey = true
 	apiKey := ""
 
-	stderr := tempStderrFile(t)
-	got := generateName("add dark mode", cfg, apiKey, nil, stderr)
+	got := generateName("add dark mode", cfg, apiKey, nil)
 	if got != "add-dark-mode" {
 		t.Errorf("got %q, want %q", got, "add-dark-mode")
 	}
-	if s := readStderrFile(t, stderr); s != "" {
-		t.Errorf("expected no output on stderr in quiet mode, got: %q", s)
+	if len(deferredWarnings) != 0 {
+		t.Errorf("expected no warnings in quiet mode, got: %v", deferredWarnings)
 	}
 }

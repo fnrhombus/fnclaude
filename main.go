@@ -667,33 +667,24 @@ func buildArgv(a Args, shellCWD string, cfg Config) []string {
 
 	// Auto-inject --tmux based on auto.tmux config.
 	//
-	// claude requires --worktree to be present when --tmux is used. The two
-	// auto modes account for that:
+	// claude requires --worktree to be present when --tmux is used. The only
+	// auto mode that's compatible with that constraint is "worktree", which
+	// fires when the user is already creating a new worktree themselves:
 	//
-	//   "always"   — inject BOTH --worktree (bare; claude auto-names the wt)
-	//                AND --tmux on every launch. Effectively: every session
-	//                becomes its own wt+tmux pair.
-	//   "worktree" — inject --tmux only when the user passed -w / --worktree
-	//                for a NEW worktree (a.WorktreeSet && !a.WorktreeMatched).
-	//                --worktree is already in the argv in that case.
+	//   "worktree" — inject --tmux when the user passed -w / --worktree for
+	//                a NEW worktree (a.WorktreeSet && !a.WorktreeMatched).
+	//                --worktree is already in passthrough; claude's constraint
+	//                is satisfied without fnclaude generating worktrees on
+	//                its own.
 	//   "never"    — no-op.
-	if !tokenInPassthrough(a.Passthrough, "--tmux") && !a.NoTmux {
-		switch cfg.Auto.Tmux {
-		case "always":
-			// Don't add --worktree if the user already passed it or fnclaude
-			// intercepted it (a.WorktreeSet covers both passthrough and matched).
-			if !a.WorktreeSet && !tokenInPassthrough(a.Passthrough, "--worktree") {
-				argv = append(argv, "--worktree")
-			}
-			argv = append(argv, "--tmux")
-		case "worktree":
-			// Add --tmux only when -w is creating a new worktree (not when we
-			// matched an existing one and swapped cwd). --worktree is already
-			// in the passthrough at this point — claude's constraint is satisfied.
-			if a.WorktreeSet && !a.WorktreeMatched {
-				argv = append(argv, "--tmux")
-			}
-		}
+	//
+	// fnclaude never auto-creates worktrees — that's always a user-initiated
+	// action.
+	if cfg.Auto.Tmux == "worktree" &&
+		!tokenInPassthrough(a.Passthrough, "--tmux") &&
+		!a.NoTmux &&
+		a.WorktreeSet && !a.WorktreeMatched {
+		argv = append(argv, "--tmux")
 	}
 
 	argv = append(argv, withAgentPitfallWarning(a.Passthrough)...)
@@ -702,6 +693,14 @@ func buildArgv(a Args, shellCWD string, cfg Config) []string {
 }
 
 func run() int {
+	// Flush any deferred warnings on exit, AFTER claude has finished and the
+	// user is back at their shell — never during startup where the warnings
+	// would scroll off-screen behind claude's UI. The silent-relaunch path
+	// (cross-cwd resume) uses syscall.Exec, which skips this defer; that's
+	// intentional, since the relaunched fnclaude will re-emit any warnings
+	// that still apply.
+	defer flushWarnings()
+
 	if wantsHelp(os.Args[1:]) {
 		fmt.Print(helpText)
 		return 0
@@ -746,7 +745,7 @@ func run() int {
 	if shouldAutoName(a.Passthrough) {
 		prompt := extractPrompt(a.Passthrough)
 		apiKey := os.Getenv("ANTHROPIC_API_KEY")
-		name := generateName(prompt, cfg.Name, apiKey, nil, os.Stderr)
+		name := generateName(prompt, cfg.Name, apiKey, nil)
 		a.Passthrough = append([]string{"--name", name}, a.Passthrough...)
 	}
 

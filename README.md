@@ -90,10 +90,9 @@ dangerously_skip_permissions = true  # inject -D on every launch
 All three are off by default. Per-invocation overrides (`--no-tmux`, `--no-permissions`) let you
 escape for a single run without touching config.
 
-`auto.tmux = "always"` injects both `--worktree` (bare; claude auto-names the wt) and `--tmux` on
-every launch — claude requires `--worktree` whenever `--tmux` is set. So "always" means "every
-session is its own worktree + tmux pair." Use `"worktree"` instead if you only want tmux when you
-explicitly pass `-w`.
+`auto.tmux = "worktree"` injects `--tmux` only when you're explicitly creating a new worktree via
+`-w` (which claude requires for `--tmux` anyway). fnclaude never spawns worktrees on its own —
+that's always a user-initiated action.
 
 
 ### Auto-name from prompt
@@ -367,16 +366,16 @@ or via `FNCLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=true`, or per-invocation with
 ### Auto `--tmux`
 
 Controls auto-injection of `--tmux`. claude rejects `--tmux` unless `--worktree`
-is also set, so the modes account for that:
+is also set, so only two modes are valid:
 
 - `"never"` (default) — no-op.
 - `"worktree"` — inject `--tmux` when the user is creating a *new* worktree
   (`-w <new-name>` that didn't match an existing one). `--worktree` is
-  necessarily present in that case, so claude's constraint is satisfied.
-- `"always"` — inject *both* `--worktree` (bare; claude auto-names the wt) and
-  `--tmux` on every launch. Effectively: every session becomes its own
-  worktree + tmux pair. Skipped when the user already passed `-w` themselves —
-  their worktree value wins.
+  necessarily present, so claude's constraint is satisfied. fnclaude never
+  auto-creates worktrees on its own — they're always user-initiated.
+
+Unknown values (including the deprecated `"always"`) are normalized to
+`"never"` with a stderr warning that surfaces after claude exits.
 
 Suppress for a single invocation with `--no-tmux`.
 

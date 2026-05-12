@@ -469,40 +469,6 @@ func TestBuildArgv_AutoIDE_AlreadyInPassthrough_NotDuplicated(t *testing.T) {
 
 // ── Auto-TMUX injection tests ──────────────────────────────────────────────
 
-func TestBuildArgv_AutoTmux_Always_InjectsWorktreeAndTmux(t *testing.T) {
-	// claude requires --worktree to be present when --tmux is used.
-	// "always" mode injects both.
-	cfg := defaultConfig()
-	cfg.Auto.Tmux = "always"
-	a := Args{CWD: "/p/main"}
-	argv := buildArgv(a, "/shell", cfg)
-	assertContains(t, argv, "--worktree")
-	assertContains(t, argv, "--tmux")
-}
-
-func TestBuildArgv_AutoTmux_Always_UserWorktree_OnlyAddsTmux(t *testing.T) {
-	// User passed -w themselves; --tmux still injected, but --worktree NOT
-	// duplicated (user's worktree value wins).
-	cfg := defaultConfig()
-	cfg.Auto.Tmux = "always"
-	a := Args{
-		CWD:         "/p/main",
-		WorktreeSet: true,
-		Passthrough: []string{"--worktree", "feat"},
-	}
-	argv := buildArgv(a, "/shell", cfg)
-	assertContains(t, argv, "--tmux")
-	count := 0
-	for _, tok := range argv {
-		if tok == "--worktree" {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Errorf("--worktree appears %d times in argv, want exactly 1: %v", count, argv)
-	}
-}
-
 func TestBuildArgv_AutoTmux_Never_NotInjected(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Auto.Tmux = "never"
@@ -511,20 +477,27 @@ func TestBuildArgv_AutoTmux_Never_NotInjected(t *testing.T) {
 	assertNotContains(t, argv, "--tmux")
 }
 
-func TestBuildArgv_AutoTmux_Always_SuppressedByNoTmux(t *testing.T) {
+func TestBuildArgv_AutoTmux_Worktree_SuppressedByNoTmux(t *testing.T) {
+	// Even when conditions for injection are met, --no-tmux wins.
 	cfg := defaultConfig()
-	cfg.Auto.Tmux = "always"
-	a := Args{CWD: "/p/main", NoTmux: true}
+	cfg.Auto.Tmux = "worktree"
+	a := Args{
+		CWD:         "/p/main",
+		WorktreeSet: true,
+		NoTmux:      true,
+		Passthrough: []string{"--worktree", "feat"},
+	}
 	argv := buildArgv(a, "/shell", cfg)
 	assertNotContains(t, argv, "--tmux")
 }
 
-func TestBuildArgv_AutoTmux_Always_AlreadyInPassthrough_NotDuplicated(t *testing.T) {
+func TestBuildArgv_AutoTmux_Worktree_AlreadyInPassthrough_NotDuplicated(t *testing.T) {
 	cfg := defaultConfig()
-	cfg.Auto.Tmux = "always"
+	cfg.Auto.Tmux = "worktree"
 	a := Args{
 		CWD:         "/p/main",
-		Passthrough: []string{"--tmux"},
+		WorktreeSet: true,
+		Passthrough: []string{"--worktree", "feat", "--tmux"},
 	}
 	argv := buildArgv(a, "/shell", cfg)
 	count := 0
@@ -575,13 +548,15 @@ func TestBuildArgv_AutoTmux_Worktree_WithoutWorktreeFlag(t *testing.T) {
 	assertNotContains(t, argv, "--tmux")
 }
 
-func TestBuildArgv_AutoTmux_Always_ExplicitTNotDuplicated(t *testing.T) {
-	// -T translates to --tmux; auto.tmux=always must not add a second.
+func TestBuildArgv_AutoTmux_Worktree_ExplicitTNotDuplicated(t *testing.T) {
+	// -T translates to --tmux; auto.tmux="worktree" must not add a second
+	// when conditions for injection would otherwise be met.
 	cfg := defaultConfig()
-	cfg.Auto.Tmux = "always"
+	cfg.Auto.Tmux = "worktree"
 	a := Args{
 		CWD:         "/p/main",
-		Passthrough: []string{"--tmux", "mywin"},
+		WorktreeSet: true,
+		Passthrough: []string{"--worktree", "feat", "--tmux", "mywin"},
 	}
 	argv := buildArgv(a, "/shell", cfg)
 	count := 0

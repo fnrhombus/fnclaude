@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +27,9 @@ type NameConfig struct {
 
 // AutoConfig holds fields from the [auto] TOML section.
 type AutoConfig struct {
-	// Tmux controls automatic --tmux injection: "never", "worktree", "always".
+	// Tmux controls automatic --tmux injection: "never" or "worktree".
+	// Anything else (including the deprecated "always") is normalized to
+	// "never" with a stderr warning during config load.
 	Tmux string
 
 	// IDE controls automatic --ide injection: "never", "always".
@@ -97,7 +98,7 @@ func loadConfig() Config {
 	if _, err := os.Stat(path); err == nil {
 		var raw rawConfig
 		if _, err := toml.DecodeFile(path, &raw); err != nil {
-			fmt.Fprintf(os.Stderr, "fnclaude: config file %s is malformed, using defaults: %v\n", path, err)
+			warn("fnclaude: config file %s is malformed, using defaults: %v", path, err)
 		} else {
 			if raw.Name.Model != "" {
 				cfg.Name.Model = raw.Name.Model
@@ -106,7 +107,7 @@ func loadConfig() Config {
 				if d, err := time.ParseDuration(raw.Name.Timeout); err == nil {
 					cfg.Name.Timeout = d
 				} else {
-					fmt.Fprintf(os.Stderr, "fnclaude: invalid timeout %q in config, using default: %v\n", raw.Name.Timeout, err)
+					warn("fnclaude: invalid timeout %q in config, using default: %v", raw.Name.Timeout, err)
 				}
 			}
 			cfg.Name.QuietMissingAPIKey = raw.Name.QuietMissingAPIKey
@@ -128,7 +129,7 @@ func loadConfig() Config {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.Name.Timeout = d
 		} else {
-			fmt.Fprintf(os.Stderr, "fnclaude: invalid FNCLAUDE_NAME_TIMEOUT %q, using current value: %v\n", v, err)
+			warn("fnclaude: invalid FNCLAUDE_NAME_TIMEOUT %q, using current value: %v", v, err)
 		}
 	}
 	if v := os.Getenv("FNCLAUDE_QUIET_MISSING_API_KEY"); v != "" {
@@ -144,7 +145,23 @@ func loadConfig() Config {
 		cfg.Auto.DangerouslySkipPermissions = parseBoolEnv(v)
 	}
 
+	cfg.Auto.Tmux = normalizeTmuxMode(cfg.Auto.Tmux)
+
 	return cfg
+}
+
+// normalizeTmuxMode validates Tmux against the supported set and falls back
+// to "never" for anything else, warning to stderr. Particularly catches the
+// deprecated "always" value from earlier fnclaude versions.
+func normalizeTmuxMode(v string) string {
+	switch v {
+	case "never", "worktree":
+		return v
+	case "":
+		return "never"
+	}
+	warn("fnclaude: auto.tmux=%q is not a valid mode (use \"never\" or \"worktree\"), falling back to \"never\"", v)
+	return "never"
 }
 
 // parseBoolEnv returns true for "1", "true", "yes" (case-insensitive),

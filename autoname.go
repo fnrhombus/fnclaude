@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -191,13 +190,14 @@ func defaultLLMClient(apiKey string) llmClientFunc {
 }
 
 // generateName produces a session name for the given prompt.
-// stderr is used to emit the missing-API-key warning.
 // llmFn may be nil to force the heuristic path (e.g. in tests).
-func generateName(prompt string, cfg NameConfig, apiKey string, llmFn llmClientFunc, stderr *os.File) string {
+// The missing-API-key warning is deferred via warn() so it lands in the
+// shell after claude exits, not flashed past during startup.
+func generateName(prompt string, cfg NameConfig, apiKey string, llmFn llmClientFunc) string {
 	// API key missing: warn (unless suppressed) then fall back.
 	if apiKey == "" {
 		if !cfg.QuietMissingAPIKey {
-			fmt.Fprintln(stderr, "fnclaude: ANTHROPIC_API_KEY not set; using heuristic name (suppress with FNCLAUDE_QUIET_MISSING_API_KEY=1 or config quiet_missing_api_key = true)")
+			warn("fnclaude: ANTHROPIC_API_KEY not set; used heuristic name instead (suppress with FNCLAUDE_QUIET_MISSING_API_KEY=1 or config quiet_missing_api_key = true)")
 		}
 		return heuristicName(prompt)
 	}

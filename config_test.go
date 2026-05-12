@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -91,7 +92,7 @@ timeout = "10s"
 quiet_missing_api_key = true
 
 [auto]
-tmux = "always"
+tmux = "worktree"
 ide = "always"
 dangerously_skip_permissions = true
 `)
@@ -107,7 +108,7 @@ dangerously_skip_permissions = true
 	if !cfg.Name.QuietMissingAPIKey {
 		t.Error("Name.QuietMissingAPIKey: got false, want true")
 	}
-	if cfg.Auto.Tmux != "always" {
+	if cfg.Auto.Tmux != "worktree" {
 		t.Errorf("Auto.Tmux: got %q", cfg.Auto.Tmux)
 	}
 	if cfg.Auto.IDE != "always" {
@@ -141,15 +142,16 @@ dangerously_skip_permissions = false
 `)
 	clearConfigEnv(t)
 	t.Setenv("FNCLAUDE_NAME_MODEL", "claude-sonnet-4-5")
-	t.Setenv("FNCLAUDE_TMUX", "always")
+	t.Setenv("FNCLAUDE_TMUX", "never")
 	t.Setenv("FNCLAUDE_DANGEROUSLY_SKIP_PERMISSIONS", "true")
 
 	cfg := loadConfig()
 	if cfg.Name.Model != "claude-sonnet-4-5" {
 		t.Errorf("Name.Model: got %q, want claude-sonnet-4-5", cfg.Name.Model)
 	}
-	if cfg.Auto.Tmux != "always" {
-		t.Errorf("Auto.Tmux: got %q, want always", cfg.Auto.Tmux)
+	// File set tmux="worktree"; env overrides to "never".
+	if cfg.Auto.Tmux != "never" {
+		t.Errorf("Auto.Tmux: got %q, want never (env-override)", cfg.Auto.Tmux)
 	}
 	if !cfg.Auto.DangerouslySkipPermissions {
 		t.Error("Auto.DangerouslySkipPermissions: got false, want true")
@@ -172,12 +174,12 @@ func TestLoadConfig_PartialFile_UnsetFieldsStayDefault(t *testing.T) {
 	// Only set one field; others should remain at built-in defaults.
 	writeConfigFile(t, `
 [auto]
-tmux = "always"
+tmux = "worktree"
 `)
 	clearConfigEnv(t)
 
 	cfg := loadConfig()
-	if cfg.Auto.Tmux != "always" {
+	if cfg.Auto.Tmux != "worktree" {
 		t.Errorf("Auto.Tmux: got %q, want always", cfg.Auto.Tmux)
 	}
 	// IDE not in file — should still be default.
@@ -204,5 +206,32 @@ func clearConfigEnv(t *testing.T) {
 	} {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
+	}
+}
+
+func TestLoadConfig_InvalidTmuxValue_NormalizedToNeverWithWarning(t *testing.T) {
+	// Deprecated "always" value (or any unknown string) should normalize to
+	// "never" and queue a stderr warning that fnclaude will flush after exit.
+	writeConfigFile(t, `
+[auto]
+tmux = "always"
+`)
+	clearConfigEnv(t)
+	deferredWarnings = nil
+	t.Cleanup(func() { deferredWarnings = nil })
+
+	cfg := loadConfig()
+	if cfg.Auto.Tmux != "never" {
+		t.Errorf("Auto.Tmux: got %q, want never (fallback for invalid value)", cfg.Auto.Tmux)
+	}
+	found := false
+	for _, w := range deferredWarnings {
+		if strings.Contains(w, "auto.tmux=\"always\"") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a deferred warning about auto.tmux, got: %v", deferredWarnings)
 	}
 }
