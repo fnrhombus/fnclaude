@@ -15,5 +15,8 @@ sha256sums_aarch64=('8f49b61851de72f43c53bb4748955039a1ef3a3fd32414b28eac02cfc6d
 
 package() {
     install -Dm755 fnclaude "$pkgdir/usr/bin/fnclaude"
+    # `fnc` is the ergonomic shortcut shipped alongside fnclaude. Shell
+    # completions in this repo already register both names.
+    ln -s fnclaude "$pkgdir/usr/bin/fnc"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
