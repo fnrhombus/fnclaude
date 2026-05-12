@@ -331,7 +331,7 @@ func TestBuildArgv_NoExtraDirs(t *testing.T) {
 		CWD:         "/p/main",
 		Passthrough: []string{"--verbose"},
 	}
-	argv := buildArgv(a, "/shell")
+	argv := buildArgv(a, "/shell", defaultConfig())
 	want := []string{"claude", "--dangerously-skip-permissions", "--verbose"}
 	assertArgv(t, argv, want)
 }
@@ -342,7 +342,7 @@ func TestBuildArgv_ExtraDirsAbsolute(t *testing.T) {
 		CWD:       "/p/main",
 		ExtraDirs: []string{"/p/extra"},
 	}
-	argv := buildArgv(a, "/shell")
+	argv := buildArgv(a, "/shell", defaultConfig())
 	// Expect --add-dir; no --mcp-config or --settings (files don't exist).
 	want := []string{"claude", "--dangerously-skip-permissions", "--add-dir", "/p/extra"}
 	assertArgv(t, argv, want)
@@ -353,7 +353,7 @@ func TestBuildArgv_RelativeExtraDirResolved(t *testing.T) {
 		CWD:       "/p/main",
 		ExtraDirs: []string{"relative/dir"},
 	}
-	argv := buildArgv(a, "/shell/cwd")
+	argv := buildArgv(a, "/shell/cwd", defaultConfig())
 	// The relative path should be joined with shellCWD.
 	want := []string{"claude", "--dangerously-skip-permissions", "--add-dir", "/shell/cwd/relative/dir"}
 	assertArgv(t, argv, want)
@@ -368,7 +368,7 @@ func TestBuildArgv_SettingSourcesSuppressesSettings(t *testing.T) {
 		ExtraDirs:   []string{"/p/extra"},
 		Passthrough: []string{"--setting-sources=user"},
 	}
-	argv := buildArgv(a, "/shell")
+	argv := buildArgv(a, "/shell", defaultConfig())
 	// --setting-sources should be in passthrough position, after injected flags.
 	assertContains(t, argv, "--setting-sources=user")
 	assertNotContains(t, argv, "--settings")
@@ -379,13 +379,179 @@ func TestBuildArgv_MultipleExtraDir_Order(t *testing.T) {
 		CWD:       "/p/main",
 		ExtraDirs: []string{"/p/b", "/p/c"},
 	}
-	argv := buildArgv(a, "/shell")
+	argv := buildArgv(a, "/shell", defaultConfig())
 	want := []string{
 		"claude", "--dangerously-skip-permissions",
 		"--add-dir", "/p/b",
 		"--add-dir", "/p/c",
 	}
 	assertArgv(t, argv, want)
+}
+
+// ── Short-flag translation tests ───────────────────────────────────────────
+
+func TestParseArgs_ShortNoValue_Single(t *testing.T) {
+	a, err := parseArgs([]string{"/p/x", "-B"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Passthrough) != 1 || a.Passthrough[0] != "--brief" {
+		t.Errorf("Passthrough: got %v, want [--brief]", a.Passthrough)
+	}
+}
+
+func TestParseArgs_ShortNoValue_AllFlags(t *testing.T) {
+	cases := []struct {
+		short string
+		long  string
+	}{
+		{"-B", "--brief"},
+		{"-C", "--chrome"},
+		{"-D", "--dangerously-skip-permissions"},
+		{"-F", "--fork-session"},
+		{"-I", "--ide"},
+		{"-V", "--verbose"},
+	}
+	for _, tc := range cases {
+		a, err := parseArgs([]string{"/p/x", tc.short}, testHome)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.short, err)
+		}
+		if len(a.Passthrough) != 1 || a.Passthrough[0] != tc.long {
+			t.Errorf("%s: Passthrough got %v, want [%s]", tc.short, a.Passthrough, tc.long)
+		}
+	}
+}
+
+func TestParseArgs_ShortCollapsed_NoValue(t *testing.T) {
+	// -BVC → --brief --verbose --chrome
+	a, err := parseArgs([]string{"/p/x", "-BVC"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"--brief", "--verbose", "--chrome"}
+	if len(a.Passthrough) != len(want) {
+		t.Fatalf("Passthrough: got %v, want %v", a.Passthrough, want)
+	}
+	for i, w := range want {
+		if a.Passthrough[i] != w {
+			t.Errorf("Passthrough[%d]: got %q, want %q", i, a.Passthrough[i], w)
+		}
+	}
+}
+
+func TestParseArgs_ShortRequired_Space(t *testing.T) {
+	// -G myagent → --agent myagent
+	a, err := parseArgs([]string{"/p/x", "-G", "myagent"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"--agent", "myagent"}
+	if len(a.Passthrough) != len(want) || a.Passthrough[0] != want[0] || a.Passthrough[1] != want[1] {
+		t.Errorf("Passthrough: got %v, want %v", a.Passthrough, want)
+	}
+}
+
+func TestParseArgs_ShortRequired_Equals(t *testing.T) {
+	// -G=myagent → --agent=myagent
+	a, err := parseArgs([]string{"/p/x", "-G=myagent"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Passthrough) != 1 || a.Passthrough[0] != "--agent=myagent" {
+		t.Errorf("Passthrough: got %v, want [--agent=myagent]", a.Passthrough)
+	}
+}
+
+func TestParseArgs_ShortRequired_MissingValue_Error(t *testing.T) {
+	_, err := parseArgs([]string{"/p/x", "-G"}, testHome)
+	if err == nil {
+		t.Fatal("expected error for -G with no value")
+	}
+}
+
+func TestParseArgs_ShortRequired_NextIsFlag_Error(t *testing.T) {
+	_, err := parseArgs([]string{"/p/x", "-G", "--something"}, testHome)
+	if err == nil {
+		t.Fatal("expected error for -G followed by flag")
+	}
+}
+
+func TestParseArgs_ShortRequired_InMiddleOfCollapse_Error(t *testing.T) {
+	// -GB is invalid: G is required-value but not last in group (B follows it)
+	_, err := parseArgs([]string{"/p/x", "-GB", "val"}, testHome)
+	if err == nil {
+		t.Fatal("expected error for -GB (G not last in collapsed group)")
+	}
+}
+
+func TestParseArgs_ShortOptional_NoValue(t *testing.T) {
+	// -T with no following non-flag token → --tmux (no value)
+	a, err := parseArgs([]string{"/p/x", "-T", "--verbose"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// --tmux should be present; --verbose also in passthrough
+	if len(a.Passthrough) < 1 || a.Passthrough[0] != "--tmux" {
+		t.Errorf("Passthrough: got %v, expected --tmux first", a.Passthrough)
+	}
+}
+
+func TestParseArgs_ShortOptional_WithValue_Space(t *testing.T) {
+	// -T mywin → --tmux mywin (greedy)
+	a, err := parseArgs([]string{"/p/x", "-T", "mywin"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"--tmux", "mywin"}
+	if len(a.Passthrough) != len(want) || a.Passthrough[0] != want[0] || a.Passthrough[1] != want[1] {
+		t.Errorf("Passthrough: got %v, want %v", a.Passthrough, want)
+	}
+}
+
+func TestParseArgs_ShortOptional_WithValue_Equals(t *testing.T) {
+	// -T=mywin → --tmux=mywin
+	a, err := parseArgs([]string{"/p/x", "-T=mywin"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Passthrough) != 1 || a.Passthrough[0] != "--tmux=mywin" {
+		t.Errorf("Passthrough: got %v, want [--tmux=mywin]", a.Passthrough)
+	}
+}
+
+func TestParseArgs_ShortOptional_AtEOF_NoValue(t *testing.T) {
+	// -T at end of args → --tmux (no value)
+	a, err := parseArgs([]string{"/p/x", "-T"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Passthrough) != 1 || a.Passthrough[0] != "--tmux" {
+		t.Errorf("Passthrough: got %v, want [--tmux]", a.Passthrough)
+	}
+}
+
+func TestParseArgs_ShortAllowedTools(t *testing.T) {
+	// -W "Bash,Read" → --allowedTools "Bash,Read"
+	a, err := parseArgs([]string{"/p/x", "-W", "Bash,Read"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"--allowedTools", "Bash,Read"}
+	if len(a.Passthrough) != len(want) || a.Passthrough[0] != want[0] || a.Passthrough[1] != want[1] {
+		t.Errorf("Passthrough: got %v, want %v", a.Passthrough, want)
+	}
+}
+
+func TestParseArgs_ShortPermissionMode(t *testing.T) {
+	// -M=bypass-permissions → --permission-mode=bypass-permissions
+	a, err := parseArgs([]string{"/p/x", "-M=bypass-permissions"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Passthrough) != 1 || a.Passthrough[0] != "--permission-mode=bypass-permissions" {
+		t.Errorf("Passthrough: got %v", a.Passthrough)
+	}
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
