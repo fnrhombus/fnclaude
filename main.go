@@ -21,6 +21,14 @@ type Args struct {
 	// Passthrough is everything else, preserved in order, to be forwarded to
 	// claude verbatim. Short flags are already translated to their long forms.
 	Passthrough []string
+
+	// NoTmux is true when the user passed --no-tmux (eaten by fnclaude; not
+	// forwarded to claude).
+	NoTmux bool
+
+	// NoPermissions is true when the user passed --no-permissions (eaten by
+	// fnclaude; not forwarded to claude).
+	NoPermissions bool
 }
 
 // modelAliases is the set of magic tokens that map to --model.
@@ -79,6 +87,8 @@ func parseArgs(argv []string, home string) (Args, error) {
 	var firstPath string
 	var extraDirs []string
 	var passthrough []string
+	var noTmux bool
+	var noPermissions bool
 
 	// Magic slots: filled at most once each, in strict order.
 	magicModel := ""
@@ -134,6 +144,18 @@ func parseArgs(argv []string, home string) (Args, error) {
 
 		// Anything from here on: we are in flag territory.
 		inFlags = true
+
+		// ── fnclaude-eaten flags (not forwarded to claude) ───────────────────
+		if arg == "--no-tmux" {
+			noTmux = true
+			i++
+			continue
+		}
+		if arg == "--no-permissions" {
+			noPermissions = true
+			i++
+			continue
+		}
 
 		// ── -A / --also ──────────────────────────────────────────────────────
 		// Supported forms: -A <val>, -A=<val>, --also <val>, --also=<val>
@@ -204,9 +226,11 @@ func parseArgs(argv []string, home string) (Args, error) {
 	}
 
 	return Args{
-		CWD:         cwd,
-		ExtraDirs:   extraDirs,
-		Passthrough: passthrough,
+		CWD:           cwd,
+		ExtraDirs:     extraDirs,
+		Passthrough:   passthrough,
+		NoTmux:        noTmux,
+		NoPermissions: noPermissions,
 	}, nil
 }
 

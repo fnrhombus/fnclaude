@@ -554,6 +554,59 @@ func TestParseArgs_ShortPermissionMode(t *testing.T) {
 	}
 }
 
+// ── Eaten-flag tests (--no-tmux / --no-permissions) ───────────────────────
+
+func TestParseArgs_NoTmux_Eaten(t *testing.T) {
+	a, err := parseArgs([]string{"/p/x", "--no-tmux"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.NoTmux {
+		t.Error("NoTmux: got false, want true")
+	}
+	// --no-tmux must not appear in passthrough
+	assertNotContains(t, a.Passthrough, "--no-tmux")
+}
+
+func TestParseArgs_NoPermissions_Eaten(t *testing.T) {
+	a, err := parseArgs([]string{"/p/x", "--no-permissions"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.NoPermissions {
+		t.Error("NoPermissions: got false, want true")
+	}
+	assertNotContains(t, a.Passthrough, "--no-permissions")
+}
+
+func TestParseArgs_NoTmuxAndNoPermissions_BothEaten(t *testing.T) {
+	a, err := parseArgs([]string{"/p/x", "--no-tmux", "--no-permissions"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.NoTmux {
+		t.Error("NoTmux: got false, want true")
+	}
+	if !a.NoPermissions {
+		t.Error("NoPermissions: got false, want true")
+	}
+	if len(a.Passthrough) != 0 {
+		t.Errorf("Passthrough: got %v, want empty (eaten flags not passed through)", a.Passthrough)
+	}
+}
+
+func TestParseArgs_NoTmux_DoesNotAffectExplicitT(t *testing.T) {
+	// -T is still translated to --tmux even when --no-tmux is set
+	a, err := parseArgs([]string{"/p/x", "--no-tmux", "-T"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.NoTmux {
+		t.Error("NoTmux: got false, want true")
+	}
+	assertContains(t, a.Passthrough, "--tmux")
+}
+
 // ── helpers ────────────────────────────────────────────────────────────────
 
 func assertArgv(t *testing.T, got, want []string) {
