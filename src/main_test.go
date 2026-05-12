@@ -1030,16 +1030,24 @@ func fakeGitRunner(out string) func(string, ...string) ([]byte, error) {
 }
 
 // worktreeListOutput builds a fake `git worktree list --porcelain` output for
-// a slice of absolute paths.
-func worktreeListOutput(paths []string) string {
+// a slice of absolute paths. The branch for entry i is taken from branches[i]
+// if provided; otherwise defaults to "main" for the first and "wt-<i>" for the rest.
+func worktreeListOutput(paths []string, branches ...string) string {
 	var sb strings.Builder
 	for i, p := range paths {
 		if i > 0 {
 			sb.WriteString("\n\n")
 		}
+		branch := "main"
+		if i < len(branches) {
+			branch = branches[i]
+		} else if i > 0 {
+			branch = fmt.Sprintf("wt-%d", i)
+		}
 		sb.WriteString("worktree ")
 		sb.WriteString(p)
-		sb.WriteString("\nHEAD abc123\nbranch refs/heads/main")
+		sb.WriteString("\nHEAD abc123\nbranch refs/heads/")
+		sb.WriteString(branch)
 	}
 	sb.WriteString("\n")
 	return sb.String()
@@ -1335,5 +1343,122 @@ func TestWantsVersion_AfterDashDash_NotTriggered(t *testing.T) {
 func TestWantsVersion_DashVAfterDashDash_NotTriggered(t *testing.T) {
 	if wantsVersion([]string{"some-dir", "--", "-v"}) {
 		t.Error("expected false when -v follows --")
+	}
+}
+
+// ── findWorktree tests ────────────────────────────────────────────────────
+
+func TestFindWorktree_MatchByBasename(t *testing.T) {
+	wts := []worktreeInfo{
+		{Path: "/repo/main", Branch: "main"},
+		{Path: "/repo/feat-x", Branch: "feat-x"},
+	}
+	hit := findWorktree(wts, "feat-x")
+	if hit == nil || hit.Path != "/repo/feat-x" {
+		t.Errorf("expected basename match, got %+v", hit)
+	}
+}
+
+func TestFindWorktree_MatchByBranch_CustomConvention(t *testing.T) {
+	// User convention: path is /home/tom/src/proj@user+feat-x, branch is feat-x.
+	// Basename match against query "feat-x" fails (basename includes +); branch
+	// match succeeds.
+	wts := []worktreeInfo{
+		{Path: "/home/tom/src/proj@user", Branch: "main"},
+		{Path: "/home/tom/src/proj@user+feat-x", Branch: "feat-x"},
+	}
+	hit := findWorktree(wts, "feat-x")
+	if hit == nil || hit.Path != "/home/tom/src/proj@user+feat-x" {
+		t.Errorf("expected branch match, got %+v", hit)
+	}
+}
+
+func TestFindWorktree_MatchByBranchWithWorktreePrefixStripped(t *testing.T) {
+	// Claude's default convention: branch is worktree-<name>. Stripping the
+	// prefix and matching against the user's query should hit.
+	wts := []worktreeInfo{
+		{Path: "/repo/.claude/worktrees/feat-x", Branch: "worktree-feat-x"},
+	}
+	hit := findWorktree(wts, "feat-x")
+	if hit == nil {
+		t.Fatal("expected match by stripped branch prefix")
+	}
+	if hit.Path != "/repo/.claude/worktrees/feat-x" {
+		t.Errorf("got %q", hit.Path)
+	}
+}
+
+func TestFindWorktree_BasenameWinsOverBranch(t *testing.T) {
+	// If both strategies could match, basename takes priority (it's the most
+	// direct interpretation of what the user typed).
+	wts := []worktreeInfo{
+		{Path: "/repo/main", Branch: "feat-x"},   // branch matches "feat-x"
+		{Path: "/repo/feat-x", Branch: "other"}, // basename matches "feat-x"
+	}
+	hit := findWorktree(wts, "feat-x")
+	if hit == nil || hit.Path != "/repo/feat-x" {
+		t.Errorf("basename should win, got %+v", hit)
+	}
+}
+
+func TestFindWorktree_NoMatch_ReturnsNil(t *testing.T) {
+	wts := []worktreeInfo{
+		{Path: "/repo/main", Branch: "main"},
+	}
+	if hit := findWorktree(wts, "nope"); hit != nil {
+		t.Errorf("expected nil, got %+v", hit)
+	}
+}
+
+func TestFindWorktree_DetachedBranch_NotMatchedByEmptyQuery(t *testing.T) {
+	// Detached worktrees have Branch="" — never match an empty query.
+	wts := []worktreeInfo{
+		{Path: "/repo/wt1", Branch: ""},
+	}
+	if hit := findWorktree(wts, ""); hit != nil {
+		t.Errorf("empty query against detached should not match, got %+v", hit)
+	}
+}
+
+func TestApplyWorktreeIntercept_MatchesByBranch_CustomConvention(t *testing.T) {
+	// Integration: simulate user's convention `<repo>+<wtname>` on disk.
+	// Query is the bare wt name; basename won't match but branch will.
+	orig := gitRunner
+	defer func() { gitRunner = orig }()
+	gitRunner = fakeGitRunner(worktreeListOutput(
+		[]string{"/home/tom/src/proj@user", "/home/tom/src/proj@user+feat-x"},
+		"main", "feat-x",
+	))
+
+	a := Args{CWD: "/home/tom/src/proj@user", WorktreeSet: true, WorktreeArg: "feat-x"}
+	applyWorktreeIntercept(&a, "/shell")
+
+	if a.CWD != "/home/tom/src/proj@user+feat-x" {
+		t.Errorf("CWD: got %q, want the custom-convention path", a.CWD)
+	}
+	if !a.WorktreeMatched {
+		t.Error("WorktreeMatched: got false, want true")
+	}
+}
+
+func TestApplyWorktreeIntercept_MatchesByStrippedBranch_DefaultConvention(t *testing.T) {
+	// Claude's default: path .claude/worktrees/feat-x, branch worktree-feat-x.
+	// Both basename AND stripped-branch would match — basename takes priority,
+	// but stripped-branch is the documented fallback if basename ever doesn't.
+	orig := gitRunner
+	defer func() { gitRunner = orig }()
+	gitRunner = fakeGitRunner(worktreeListOutput(
+		[]string{"/repo/main", "/repo/.claude/worktrees/feat-x"},
+		"main", "worktree-feat-x",
+	))
+
+	a := Args{CWD: "/repo/main", WorktreeSet: true, WorktreeArg: "feat-x"}
+	applyWorktreeIntercept(&a, "/shell")
+
+	if a.CWD != "/repo/.claude/worktrees/feat-x" {
+		t.Errorf("CWD: got %q, want the default-convention path", a.CWD)
+	}
+	if !a.WorktreeMatched {
+		t.Error("WorktreeMatched: got false, want true")
 	}
 }

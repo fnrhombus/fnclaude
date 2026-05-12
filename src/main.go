@@ -553,31 +553,77 @@ var gitRunner = func(dir string, args ...string) ([]byte, error) {
 	return exec.Command("git", cmdArgs...).Output()
 }
 
-// listWorktrees returns a map of worktree basename → absolute path by running
+// worktreeInfo is one entry from `git worktree list --porcelain`.
+type worktreeInfo struct {
+	Path   string // absolute filesystem path
+	Branch string // bare branch name (e.g. "feature-x" or "worktree-feature-x"); "" if detached
+}
+
+// listWorktrees returns one worktreeInfo per worktree by running
 // `git worktree list --porcelain` in dir. Returns nil on any error (not-a-repo,
 // etc.) with no error propagated — callers treat nil as "no match possible".
-func listWorktrees(dir string) map[string]string {
+func listWorktrees(dir string) []worktreeInfo {
 	out, err := gitRunner(dir, "worktree", "list", "--porcelain")
 	if err != nil {
 		return nil
 	}
 
-	result := make(map[string]string)
-	// Output is blank-line-separated blocks; first line of each block is
-	// "worktree /absolute/path".
+	var result []worktreeInfo
+	// Output is blank-line-separated blocks. Each block has lines like:
+	//   worktree /absolute/path
+	//   HEAD <sha>
+	//   branch refs/heads/<branchname>     (or "detached" instead)
 	for _, block := range strings.Split(string(out), "\n\n") {
+		var wt worktreeInfo
 		for _, line := range strings.Split(block, "\n") {
-			if strings.HasPrefix(line, "worktree ") {
-				path := strings.TrimPrefix(line, "worktree ")
-				path = strings.TrimSpace(path)
-				if path != "" {
-					result[filepath.Base(path)] = path
-				}
-				break
+			switch {
+			case strings.HasPrefix(line, "worktree "):
+				wt.Path = strings.TrimSpace(strings.TrimPrefix(line, "worktree "))
+			case strings.HasPrefix(line, "branch refs/heads/"):
+				wt.Branch = strings.TrimSpace(strings.TrimPrefix(line, "branch refs/heads/"))
 			}
+		}
+		if wt.Path != "" {
+			result = append(result, wt)
 		}
 	}
 	return result
+}
+
+// findWorktree picks the worktreeInfo matching query, trying three strategies
+// in order:
+//   1. basename of the path  ==  query  (catches default `.claude/worktrees/<name>`)
+//   2. branch name           ==  query  (catches custom convention with bare branch names)
+//   3. branch with `worktree-` prefix stripped == query (catches Claude's default branch naming)
+//
+// Returns nil when no entry matches. The strategies cover both Claude's
+// default conventions and the local `<repo>+<wtname>` convention without
+// having to special-case either layout in code — git tells us the path and
+// branch; we match on whichever shape happens to fit.
+func findWorktree(worktrees []worktreeInfo, query string) *worktreeInfo {
+	if query == "" {
+		// Defensive: never match against detached worktrees (Branch="") or
+		// empty basenames just because the caller passed an empty query.
+		// applyWorktreeIntercept already short-circuits on empty WorktreeArg
+		// upstream of this; this guard keeps the helper safe in isolation.
+		return nil
+	}
+	for i := range worktrees {
+		if filepath.Base(worktrees[i].Path) == query {
+			return &worktrees[i]
+		}
+	}
+	for i := range worktrees {
+		if worktrees[i].Branch == query {
+			return &worktrees[i]
+		}
+	}
+	for i := range worktrees {
+		if strings.TrimPrefix(worktrees[i].Branch, "worktree-") == query && worktrees[i].Branch != "" {
+			return &worktrees[i]
+		}
+	}
+	return nil
 }
 
 // applyWorktreeIntercept applies the -w/--worktree intercept logic to a.
@@ -603,12 +649,11 @@ func applyWorktreeIntercept(a *Args, shellCWD string) {
 		dir = filepath.Join(shellCWD, dir)
 	}
 
-	// List worktrees in the project repo.
-	worktrees := listWorktrees(dir)
-
-	if matchedPath, ok := worktrees[a.WorktreeArg]; ok {
+	// List worktrees in the project repo, then match the user's query against
+	// basename / branch / worktree-stripped-branch.
+	if hit := findWorktree(listWorktrees(dir), a.WorktreeArg); hit != nil {
 		// Existing worktree matched: swap cwd, suppress -w.
-		a.CWD = matchedPath
+		a.CWD = hit.Path
 		a.WorktreeMatched = true
 		return
 	}
