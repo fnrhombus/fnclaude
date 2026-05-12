@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -508,26 +510,33 @@ func TestBuildArgv_AutoTmux_Always_AlreadyInPassthrough_NotDuplicated(t *testing
 	}
 }
 
-func TestBuildArgv_AutoTmux_Worktree_WithWorktreeFlag(t *testing.T) {
+func TestBuildArgv_AutoTmux_Worktree_NewWorktree(t *testing.T) {
+	// -w <name> that didn't match an existing worktree → new worktree being
+	// created → --tmux should be injected.
 	cfg := defaultConfig()
 	cfg.Auto.Tmux = "worktree"
 	a := Args{
 		CWD:         "/p/main",
-		Passthrough: []string{"--worktree"},
+		WorktreeSet: true,
+		// WorktreeMatched = false (default): -w went through to passthrough.
+		Passthrough: []string{"--worktree", "feat"},
 	}
 	argv := buildArgv(a, "/shell", cfg)
 	assertContains(t, argv, "--tmux")
 }
 
-func TestBuildArgv_AutoTmux_Worktree_WithShortW(t *testing.T) {
+func TestBuildArgv_AutoTmux_Worktree_MatchedExisting_NoTmux(t *testing.T) {
+	// -w <name> that DID match an existing worktree → cwd swapped, no new
+	// worktree → --tmux should NOT be injected.
 	cfg := defaultConfig()
 	cfg.Auto.Tmux = "worktree"
 	a := Args{
-		CWD:         "/p/main",
-		Passthrough: []string{"-w"},
+		CWD:             "/p/feat",
+		WorktreeSet:     true,
+		WorktreeMatched: true,
 	}
 	argv := buildArgv(a, "/shell", cfg)
-	assertContains(t, argv, "--tmux")
+	assertNotContains(t, argv, "--tmux")
 }
 
 func TestBuildArgv_AutoTmux_Worktree_WithoutWorktreeFlag(t *testing.T) {
@@ -895,4 +904,242 @@ func assertNotContains(t *testing.T, argv []string, token string) {
 			return
 		}
 	}
+}
+
+// ── Parser tests: -w / --worktree ─────────────────────────────────────────
+
+func TestParseArgs_W_Bare(t *testing.T) {
+	// -w with no following non-flag token → WorktreeSet=true, WorktreeArg=""
+	a, err := parseArgs([]string{"/p/x", "-w"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.WorktreeSet {
+		t.Error("WorktreeSet: got false, want true")
+	}
+	if a.WorktreeArg != "" {
+		t.Errorf("WorktreeArg: got %q, want empty", a.WorktreeArg)
+	}
+	// -w must NOT appear in Passthrough (intercept holds it)
+	assertNotContains(t, a.Passthrough, "-w")
+	assertNotContains(t, a.Passthrough, "--worktree")
+}
+
+func TestParseArgs_W_WithValue_Space(t *testing.T) {
+	// -w feat → WorktreeSet=true, WorktreeArg="feat"
+	a, err := parseArgs([]string{"/p/x", "-w", "feat"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.WorktreeSet {
+		t.Error("WorktreeSet: got false, want true")
+	}
+	if a.WorktreeArg != "feat" {
+		t.Errorf("WorktreeArg: got %q, want %q", a.WorktreeArg, "feat")
+	}
+	assertNotContains(t, a.Passthrough, "-w")
+	assertNotContains(t, a.Passthrough, "--worktree")
+}
+
+func TestParseArgs_W_Equals(t *testing.T) {
+	// -w=feat
+	a, err := parseArgs([]string{"/p/x", "-w=feat"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.WorktreeSet {
+		t.Error("WorktreeSet: got false, want true")
+	}
+	if a.WorktreeArg != "feat" {
+		t.Errorf("WorktreeArg: got %q, want %q", a.WorktreeArg, "feat")
+	}
+}
+
+func TestParseArgs_Worktree_Bare(t *testing.T) {
+	// --worktree with no value
+	a, err := parseArgs([]string{"/p/x", "--worktree"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.WorktreeSet {
+		t.Error("WorktreeSet: got false, want true")
+	}
+	if a.WorktreeArg != "" {
+		t.Errorf("WorktreeArg: got %q, want empty", a.WorktreeArg)
+	}
+}
+
+func TestParseArgs_Worktree_WithValue_Space(t *testing.T) {
+	// --worktree feat
+	a, err := parseArgs([]string{"/p/x", "--worktree", "feat"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.WorktreeSet {
+		t.Error("WorktreeSet: got false, want true")
+	}
+	if a.WorktreeArg != "feat" {
+		t.Errorf("WorktreeArg: got %q, want %q", a.WorktreeArg, "feat")
+	}
+}
+
+func TestParseArgs_Worktree_Equals(t *testing.T) {
+	// --worktree=feat
+	a, err := parseArgs([]string{"/p/x", "--worktree=feat"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.WorktreeSet {
+		t.Error("WorktreeSet: got false, want true")
+	}
+	if a.WorktreeArg != "feat" {
+		t.Errorf("WorktreeArg: got %q, want %q", a.WorktreeArg, "feat")
+	}
+}
+
+func TestParseArgs_W_NextIsFlag_NoConsume(t *testing.T) {
+	// -w followed by a flag token: value should not be consumed.
+	a, err := parseArgs([]string{"/p/x", "-w", "--verbose"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.WorktreeSet {
+		t.Error("WorktreeSet: got false, want true")
+	}
+	if a.WorktreeArg != "" {
+		t.Errorf("WorktreeArg: got %q, want empty (flag not consumed)", a.WorktreeArg)
+	}
+	// --verbose should still be in passthrough
+	assertContains(t, a.Passthrough, "--verbose")
+}
+
+// ── applyWorktreeIntercept tests ──────────────────────────────────────────
+
+// fakeGitRunner returns a gitRunner replacement that serves a fixed worktree
+// list output. Pass "" for out to simulate a git error.
+func fakeGitRunner(out string) func(string, ...string) ([]byte, error) {
+	return func(dir string, args ...string) ([]byte, error) {
+		if out == "" {
+			return nil, fmt.Errorf("not a git repo")
+		}
+		return []byte(out), nil
+	}
+}
+
+// worktreeListOutput builds a fake `git worktree list --porcelain` output for
+// a slice of absolute paths.
+func worktreeListOutput(paths []string) string {
+	var sb strings.Builder
+	for i, p := range paths {
+		if i > 0 {
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString("worktree ")
+		sb.WriteString(p)
+		sb.WriteString("\nHEAD abc123\nbranch refs/heads/main")
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+func TestApplyWorktreeIntercept_NotSet(t *testing.T) {
+	orig := gitRunner
+	defer func() { gitRunner = orig }()
+	gitRunner = fakeGitRunner("") // should never be called
+
+	a := Args{CWD: "/p/main"}
+	applyWorktreeIntercept(&a, "/shell")
+	if a.CWD != "/p/main" {
+		t.Errorf("CWD changed unexpectedly: %q", a.CWD)
+	}
+	if len(a.Passthrough) != 0 {
+		t.Errorf("Passthrough changed unexpectedly: %v", a.Passthrough)
+	}
+}
+
+func TestApplyWorktreeIntercept_BareW_PushesThrough(t *testing.T) {
+	orig := gitRunner
+	defer func() { gitRunner = orig }()
+	gitRunner = fakeGitRunner("") // bare -w: git never queried
+
+	a := Args{CWD: "/p/main", WorktreeSet: true, WorktreeArg: ""}
+	applyWorktreeIntercept(&a, "/shell")
+	if a.WorktreeMatched {
+		t.Error("WorktreeMatched should be false for bare -w")
+	}
+	assertContains(t, a.Passthrough, "--worktree")
+}
+
+func TestApplyWorktreeIntercept_MatchedExisting_SwapsCWD(t *testing.T) {
+	orig := gitRunner
+	defer func() { gitRunner = orig }()
+	gitRunner = fakeGitRunner(worktreeListOutput([]string{"/repo/main", "/repo/feat"}))
+
+	a := Args{CWD: "/repo/main", WorktreeSet: true, WorktreeArg: "feat"}
+	applyWorktreeIntercept(&a, "/shell")
+
+	if a.CWD != "/repo/feat" {
+		t.Errorf("CWD: got %q, want /repo/feat", a.CWD)
+	}
+	if !a.WorktreeMatched {
+		t.Error("WorktreeMatched: got false, want true")
+	}
+	assertNotContains(t, a.Passthrough, "--worktree")
+	assertNotContains(t, a.Passthrough, "-w")
+}
+
+func TestApplyWorktreeIntercept_Unmatched_PassthroughPlusName(t *testing.T) {
+	orig := gitRunner
+	defer func() { gitRunner = orig }()
+	gitRunner = fakeGitRunner(worktreeListOutput([]string{"/repo/main"}))
+
+	a := Args{CWD: "/repo/main", WorktreeSet: true, WorktreeArg: "newfeature"}
+	applyWorktreeIntercept(&a, "/shell")
+
+	if a.WorktreeMatched {
+		t.Error("WorktreeMatched: got true, want false")
+	}
+	assertContains(t, a.Passthrough, "--worktree")
+	assertContains(t, a.Passthrough, "newfeature")
+	assertContains(t, a.Passthrough, "--name")
+}
+
+func TestApplyWorktreeIntercept_Unmatched_NameAlreadySet_NoExtraName(t *testing.T) {
+	orig := gitRunner
+	defer func() { gitRunner = orig }()
+	gitRunner = fakeGitRunner(worktreeListOutput([]string{"/repo/main"}))
+
+	a := Args{
+		CWD:         "/repo/main",
+		WorktreeSet: true,
+		WorktreeArg: "newfeature",
+		Passthrough: []string{"--name", "myname"},
+	}
+	applyWorktreeIntercept(&a, "/shell")
+
+	// --name already present; should not add another --name
+	count := 0
+	for _, t2 := range a.Passthrough {
+		if t2 == "--name" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("--name appears %d times, want exactly 1: %v", count, a.Passthrough)
+	}
+}
+
+func TestApplyWorktreeIntercept_NotARepo_PassthroughPlusName(t *testing.T) {
+	orig := gitRunner
+	defer func() { gitRunner = orig }()
+	gitRunner = fakeGitRunner("") // simulate git error / not-a-repo
+
+	a := Args{CWD: "/p/main", WorktreeSet: true, WorktreeArg: "newfeature"}
+	applyWorktreeIntercept(&a, "/shell")
+
+	if a.WorktreeMatched {
+		t.Error("WorktreeMatched: got true, want false")
+	}
+	assertContains(t, a.Passthrough, "--worktree")
+	assertContains(t, a.Passthrough, "--name")
 }

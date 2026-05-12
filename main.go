@@ -28,6 +28,19 @@ type Args struct {
 	// NoPermissions is true when the user passed --no-permissions (eaten by
 	// fnclaude; not forwarded to claude).
 	NoPermissions bool
+
+	// WorktreeSet is true when the user passed -w / --worktree.
+	// The intercept logic (applyWorktreeIntercept) decides what to do with it.
+	WorktreeSet bool
+
+	// WorktreeArg is the name/value given with -w / --worktree, or "" if the
+	// flag was bare (no value provided).
+	WorktreeArg string
+
+	// WorktreeMatched is set to true by applyWorktreeIntercept when the worktree
+	// name matched an existing worktree and the CWD was swapped. False means the
+	// flag was passed through (new worktree being created, or bare -w).
+	WorktreeMatched bool
 }
 
 // modelAliases is the set of magic tokens that map to --model.
@@ -88,6 +101,8 @@ func parseArgs(argv []string, home string) (Args, error) {
 	var passthrough []string
 	var noTmux bool
 	var noPermissions bool
+	var worktreeSet bool
+	var worktreeArg string
 
 	// Magic slots: filled at most once each, in strict order.
 	magicModel := ""
@@ -189,6 +204,39 @@ func parseArgs(argv []string, home string) (Args, error) {
 			continue
 		}
 
+		// ── -w / --worktree ──────────────────────────────────────────────────
+		// Intercepted by fnclaude; NOT pushed to passthrough here.
+		// Supported forms:
+		//   -w            (bare, no value)
+		//   -w <val>      (space-separated value)
+		//   -w=<val>      (equals form)
+		//   --worktree    (bare, no value)
+		//   --worktree <val>
+		//   --worktree=<val>
+		if arg == "-w" || arg == "--worktree" {
+			worktreeSet = true
+			// Greedy: if next token is non-flag and non-empty, consume as value.
+			if i+1 < len(argv) && !strings.HasPrefix(argv[i+1], "-") {
+				worktreeArg = argv[i+1]
+				i += 2
+			} else {
+				i++
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, "-w=") {
+			worktreeSet = true
+			worktreeArg = arg[len("-w="):]
+			i++
+			continue
+		}
+		if strings.HasPrefix(arg, "--worktree=") {
+			worktreeSet = true
+			worktreeArg = arg[len("--worktree="):]
+			i++
+			continue
+		}
+
 		// ── Single-dash short flags ───────────────────────────────────────────
 		if len(arg) >= 2 && arg[0] == '-' && arg[1] != '-' {
 			tokens, n, err := parseShortFlag(arg, argv[i+1:])
@@ -230,6 +278,8 @@ func parseArgs(argv []string, home string) (Args, error) {
 		Passthrough:   passthrough,
 		NoTmux:        noTmux,
 		NoPermissions: noPermissions,
+		WorktreeSet:   worktreeSet,
+		WorktreeArg:   worktreeArg,
 	}, nil
 }
 
@@ -334,15 +384,90 @@ func tokenInPassthrough(passthrough []string, long string) bool {
 	return false
 }
 
-// worktreeInPassthrough returns true if the passthrough slice contains a raw
-// -w or --worktree token. Used by the auto.tmux="worktree" heuristic.
-func worktreeInPassthrough(passthrough []string) bool {
+// nameInPassthrough returns true if --name or -n (with or without =value)
+// appears in the passthrough slice.
+func nameInPassthrough(passthrough []string) bool {
 	for _, t := range passthrough {
-		if t == "-w" || t == "--worktree" || strings.HasPrefix(t, "--worktree=") {
+		if t == "--name" || t == "-n" ||
+			strings.HasPrefix(t, "--name=") || strings.HasPrefix(t, "-n=") {
 			return true
 		}
 	}
 	return false
+}
+
+// gitRunner is a function type that runs a git command in a directory and
+// returns stdout. It is a variable so tests can substitute a fake.
+var gitRunner = func(dir string, args ...string) ([]byte, error) {
+	cmdArgs := append([]string{"-C", dir}, args...)
+	return exec.Command("git", cmdArgs...).Output()
+}
+
+// listWorktrees returns a map of worktree basename → absolute path by running
+// `git worktree list --porcelain` in dir. Returns nil on any error (not-a-repo,
+// etc.) with no error propagated — callers treat nil as "no match possible".
+func listWorktrees(dir string) map[string]string {
+	out, err := gitRunner(dir, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil
+	}
+
+	result := make(map[string]string)
+	// Output is blank-line-separated blocks; first line of each block is
+	// "worktree /absolute/path".
+	for _, block := range strings.Split(string(out), "\n\n") {
+		for _, line := range strings.Split(block, "\n") {
+			if strings.HasPrefix(line, "worktree ") {
+				path := strings.TrimPrefix(line, "worktree ")
+				path = strings.TrimSpace(path)
+				if path != "" {
+					result[filepath.Base(path)] = path
+				}
+				break
+			}
+		}
+	}
+	return result
+}
+
+// applyWorktreeIntercept applies the -w/--worktree intercept logic to a.
+// It may modify a.CWD and a.Passthrough in place, and sets
+// a.WorktreeMatched=true when an existing worktree was matched (cwd swapped).
+//
+// shellCWD is the process working directory (os.Getwd()) used to resolve a
+// relative a.CWD to an absolute path before querying git.
+func applyWorktreeIntercept(a *Args, shellCWD string) {
+	if !a.WorktreeSet {
+		return
+	}
+
+	// Bare -w with no name: push --worktree back through unchanged.
+	if a.WorktreeArg == "" {
+		a.Passthrough = append(a.Passthrough, "--worktree")
+		return
+	}
+
+	// Resolve absolute cwd for git queries.
+	dir := a.CWD
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(shellCWD, dir)
+	}
+
+	// List worktrees in the project repo.
+	worktrees := listWorktrees(dir)
+
+	if matchedPath, ok := worktrees[a.WorktreeArg]; ok {
+		// Existing worktree matched: swap cwd, suppress -w.
+		a.CWD = matchedPath
+		a.WorktreeMatched = true
+		return
+	}
+
+	// No match (or not a repo): pass --worktree through and attach --name.
+	a.Passthrough = append(a.Passthrough, "--worktree", a.WorktreeArg)
+	if !nameInPassthrough(a.Passthrough) {
+		a.Passthrough = append(a.Passthrough, "--name", a.WorktreeArg)
+	}
 }
 
 // buildArgv constructs the argv slice to exec claude with, given the parsed
@@ -391,15 +516,17 @@ func buildArgv(a Args, shellCWD string, cfg Config) []string {
 	}
 
 	// Auto-inject --tmux based on auto.tmux config.
-	// Note: the worktree detection below checks raw passthrough tokens for -w /
-	// --worktree. Once Feature 3 lands and fnclaude intercepts -w natively, this
-	// heuristic will be replaced with an Args field.
+	// WorktreeSet tells us the user passed -w/--worktree.
+	// WorktreeMatched tells us whether we intercepted it (cwd swapped) or
+	// passed it through (new worktree being created).
 	if !tokenInPassthrough(a.Passthrough, "--tmux") && !a.NoTmux {
 		switch cfg.Auto.Tmux {
 		case "always":
 			argv = append(argv, "--tmux")
 		case "worktree":
-			if worktreeInPassthrough(a.Passthrough) {
+			// Add --tmux only when -w is creating a new worktree (not when we
+			// matched an existing one and swapped cwd).
+			if a.WorktreeSet && !a.WorktreeMatched {
 				argv = append(argv, "--tmux")
 			}
 		}
@@ -430,6 +557,9 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "fnclaude: cannot determine working directory: %v\n", err)
 		return 1
 	}
+
+	// Apply -w/--worktree intercept (may modify a.CWD and a.Passthrough).
+	applyWorktreeIntercept(&a, shellCWD)
 
 	// Resolve the launch cwd relative to the shell cwd.
 	launchCWD := a.CWD
