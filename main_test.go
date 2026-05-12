@@ -1298,3 +1298,41 @@ func TestWantsHelp_HelpBeforeDashDash_Triggered(t *testing.T) {
 		t.Error("expected true when --help precedes --")
 	}
 }
+
+// ── --version / wantsVersion tests ─────────────────────────────────────────
+
+func TestWantsVersion_LongForm(t *testing.T) {
+	if !wantsVersion([]string{"--version"}) {
+		t.Error("expected true for --version")
+	}
+}
+
+func TestWantsVersion_ShortForm(t *testing.T) {
+	if !wantsVersion([]string{"-v"}) {
+		t.Error("expected true for -v")
+	}
+}
+
+func TestWantsVersion_AmongOtherArgs(t *testing.T) {
+	if !wantsVersion([]string{"some-dir", "-A", "docs", "--version"}) {
+		t.Error("expected true when --version is mixed in")
+	}
+}
+
+func TestWantsVersion_Absent(t *testing.T) {
+	if wantsVersion([]string{"some-dir", "-V"}) {
+		t.Error("expected false when neither -v nor --version present (-V is capital, different flag)")
+	}
+}
+
+func TestWantsVersion_AfterDashDash_NotTriggered(t *testing.T) {
+	if wantsVersion([]string{"some-dir", "--", "--version"}) {
+		t.Error("expected false when --version follows --")
+	}
+}
+
+func TestWantsVersion_DashVAfterDashDash_NotTriggered(t *testing.T) {
+	if wantsVersion([]string{"some-dir", "--", "-v"}) {
+		t.Error("expected false when -v follows --")
+	}
+}

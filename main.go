@@ -396,6 +396,26 @@ func nameInPassthrough(passthrough []string) bool {
 	return false
 }
 
+// version is the binary's version string. Default "dev" for local `go build`;
+// goreleaser injects the release tag via -ldflags -X main.version=v0.X.Y.
+var version = "dev"
+
+// wantsVersion returns true when the user passed -v or --version anywhere
+// in argv before a literal "--" terminator. fnclaude shadows claude's -v
+// short flag (the only lowercase short fnclaude claims); to reach claude's
+// own --version, the user runs `claude --version` directly.
+func wantsVersion(argv []string) bool {
+	for _, t := range argv {
+		if t == "--" {
+			return false
+		}
+		if t == "-v" || t == "--version" {
+			return true
+		}
+	}
+	return false
+}
+
 // helpText is what `fnclaude --help` / `fnclaude -h` prints.
 const helpText = `fnclaude — claude CLI launcher with quality-of-life features
 
@@ -418,6 +438,8 @@ fnclaude-owned flags:
       --no-tmux        suppress auto-tmux injection for this invocation
       --no-permissions suppress auto-DSP injection for this invocation
   -h, --help           show this help
+  -v, --version        print fnclaude's version and exit
+                       (shadows claude's -v; use ` + "`claude --version`" + ` directly for that)
 
 Capital-letter shortcuts (translate to claude long-form flags):
   -B → --brief                          -M → --permission-mode <mode>
@@ -668,6 +690,11 @@ func buildArgv(a Args, shellCWD string, cfg Config) []string {
 func run() int {
 	if wantsHelp(os.Args[1:]) {
 		fmt.Print(helpText)
+		return 0
+	}
+
+	if wantsVersion(os.Args[1:]) {
+		fmt.Println("fnclaude " + version)
 		return 0
 	}
 
