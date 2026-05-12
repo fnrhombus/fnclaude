@@ -110,6 +110,7 @@ fnclaude sonnet src/ -- "do the thing"
 | | `--no-tmux` | Suppress auto-`--tmux` for this invocation |
 | | `--no-permissions` | Suppress auto-`--dangerously-skip-permissions` for this invocation |
 | `-A <dir>` | `--also <dir>` | Add an extra dir (repeatable; supports `=` syntax) |
+| `-h` | `--help` | Print the fnclaude flag reference and exit |
 
 #### Short translations (fnclaude → claude)
 
