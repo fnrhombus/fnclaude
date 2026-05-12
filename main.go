@@ -375,6 +375,11 @@ func buildArgv(a Args, shellCWD string, cfg Config) []string {
 		}
 	}
 
+	// Auto-inject --ide if auto.ide == "always" and --ide not already in passthrough.
+	if cfg.Auto.IDE == "always" && !tokenInPassthrough(a.Passthrough, "--ide") {
+		argv = append(argv, "--ide")
+	}
+
 	argv = append(argv, a.Passthrough...)
 
 	return argv

@@ -425,6 +425,44 @@ func TestBuildArgv_NoAutoSkipPermissions_ByDefault(t *testing.T) {
 	assertNotContains(t, argv, "--dangerously-skip-permissions")
 }
 
+// ── Auto-IDE injection tests ───────────────────────────────────────────────
+
+func TestBuildArgv_AutoIDE_Always_Injected(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auto.IDE = "always"
+	a := Args{CWD: "/p/main"}
+	argv := buildArgv(a, "/shell", cfg)
+	assertContains(t, argv, "--ide")
+}
+
+func TestBuildArgv_AutoIDE_Never_NotInjected(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auto.IDE = "never"
+	a := Args{CWD: "/p/main"}
+	argv := buildArgv(a, "/shell", cfg)
+	assertNotContains(t, argv, "--ide")
+}
+
+func TestBuildArgv_AutoIDE_AlreadyInPassthrough_NotDuplicated(t *testing.T) {
+	// -I translates to --ide; auto.ide=always should not add a second copy.
+	cfg := defaultConfig()
+	cfg.Auto.IDE = "always"
+	a := Args{
+		CWD:         "/p/main",
+		Passthrough: []string{"--ide"},
+	}
+	argv := buildArgv(a, "/shell", cfg)
+	count := 0
+	for _, tok := range argv {
+		if tok == "--ide" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("--ide appears %d times in argv, want exactly 1: %v", count, argv)
+	}
+}
+
 // ── Short-flag translation tests ───────────────────────────────────────────
 
 func TestParseArgs_ShortNoValue_Single(t *testing.T) {
