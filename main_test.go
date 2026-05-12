@@ -62,7 +62,7 @@ func TestParseArgs_MixedPositionalAndAlso(t *testing.T) {
 	if a.CWD != "/p/main" {
 		t.Errorf("CWD: got %q", a.CWD)
 	}
-	// extra1 comes from positional, extra2 from --also, extra3 from -a
+	// extra1 comes from positional, extra2 from --also, extra3 from -A
 	want := []string{"/p/extra1", "/p/extra2", "/p/extra3"}
 	if len(a.ExtraDirs) != len(want) {
 		t.Fatalf("ExtraDirs: got %v, want %v", a.ExtraDirs, want)
@@ -71,36 +71,6 @@ func TestParseArgs_MixedPositionalAndAlso(t *testing.T) {
 		if a.ExtraDirs[i] != d {
 			t.Errorf("ExtraDirs[%d]: got %q, want %q", i, a.ExtraDirs[i], d)
 		}
-	}
-}
-
-func TestParseArgs_InitFlag_Space(t *testing.T) {
-	a, err := parseArgs([]string{"/p/x", "-i", "hello world"}, testHome)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if a.InitPrompt != "hello world" {
-		t.Errorf("InitPrompt: got %q", a.InitPrompt)
-	}
-}
-
-func TestParseArgs_InitFlag_Equals_Short(t *testing.T) {
-	a, err := parseArgs([]string{"/p/x", "-i=my prompt"}, testHome)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if a.InitPrompt != "my prompt" {
-		t.Errorf("InitPrompt: got %q", a.InitPrompt)
-	}
-}
-
-func TestParseArgs_InitFlag_Equals_Long(t *testing.T) {
-	a, err := parseArgs([]string{"/p/x", "--init=my prompt"}, testHome)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if a.InitPrompt != "my prompt" {
-		t.Errorf("InitPrompt: got %q", a.InitPrompt)
 	}
 }
 
@@ -137,20 +107,6 @@ func TestParseArgs_MissingValue_Also_NextIsFlag(t *testing.T) {
 	_, err := parseArgs([]string{"/p/x", "-A", "--some-flag"}, testHome)
 	if err == nil {
 		t.Fatal("expected error for -A followed by flag")
-	}
-}
-
-func TestParseArgs_MissingValue_Init_AtEOF(t *testing.T) {
-	_, err := parseArgs([]string{"/p/x", "-i"}, testHome)
-	if err == nil {
-		t.Fatal("expected error for -i with no value")
-	}
-}
-
-func TestParseArgs_MissingValue_Init_NextIsFlag(t *testing.T) {
-	_, err := parseArgs([]string{"/p/x", "-i", "--something"}, testHome)
-	if err == nil {
-		t.Fatal("expected error for -i followed by flag")
 	}
 }
 
@@ -208,25 +164,13 @@ func TestParseArgs_PassthroughOrdering(t *testing.T) {
 // These tests work against a synthetic fs view where we control which files
 // "exist". We test argv assembly without actually execing claude.
 
-// buildArgvNoFS calls buildArgv but with no actual files on disk, so
-// --mcp-config and --settings are never injected. Useful for pure ordering tests.
-func TestBuildArgv_NoExtraDirs_NoPrompt(t *testing.T) {
+func TestBuildArgv_NoExtraDirs(t *testing.T) {
 	a := Args{
 		CWD:         "/p/main",
 		Passthrough: []string{"--verbose"},
 	}
 	argv := buildArgv(a, "/shell")
 	want := []string{"claude", "--dangerously-skip-permissions", "--verbose"}
-	assertArgv(t, argv, want)
-}
-
-func TestBuildArgv_WithInitPrompt(t *testing.T) {
-	a := Args{
-		CWD:        "/p/main",
-		InitPrompt: "do the thing",
-	}
-	argv := buildArgv(a, "/shell")
-	want := []string{"claude", "--dangerously-skip-permissions", "--", "do the thing"}
 	assertArgv(t, argv, want)
 }
 
@@ -266,24 +210,6 @@ func TestBuildArgv_SettingSourcesSuppressesSettings(t *testing.T) {
 	// --setting-sources should be in passthrough position, after injected flags.
 	assertContains(t, argv, "--setting-sources=user")
 	assertNotContains(t, argv, "--settings")
-}
-
-func TestBuildArgv_TerminatorPlacement(t *testing.T) {
-	a := Args{
-		CWD:         "/p/main",
-		ExtraDirs:   []string{"/p/extra"},
-		Passthrough: []string{"--foo"},
-		InitPrompt:  "my prompt",
-	}
-	argv := buildArgv(a, "/shell")
-	// Order must be: claude --dangerously-skip-permissions --add-dir /p/extra --foo -- "my prompt"
-	want := []string{
-		"claude", "--dangerously-skip-permissions",
-		"--add-dir", "/p/extra",
-		"--foo",
-		"--", "my prompt",
-	}
-	assertArgv(t, argv, want)
 }
 
 func TestBuildArgv_MultipleExtraDir_Order(t *testing.T) {

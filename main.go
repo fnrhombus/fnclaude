@@ -18,9 +18,6 @@ type Args struct {
 	// ExtraDirs collects positional[1:] and all -A/--also values, in order.
 	ExtraDirs []string
 
-	// InitPrompt is the value of -i/--init, empty if not given.
-	InitPrompt string
-
 	// Passthrough is everything else, preserved in order, to be forwarded to
 	// claude verbatim.
 	Passthrough []string
@@ -31,7 +28,6 @@ type Args struct {
 func parseArgs(argv []string, home string) (Args, error) {
 	var firstPath string
 	var extraDirs []string
-	var initPrompt string
 	var passthrough []string
 
 	inFlags := false // once true, non-flag tokens go to passthrough
@@ -89,39 +85,6 @@ func parseArgs(argv []string, home string) (Args, error) {
 			continue
 		}
 
-		// ── -i / --init ──────────────────────────────────────────────────────
-		// Supported forms: -i <val>, --init <val>, -i=<val>, --init=<val>
-		if arg == "-i" || arg == "--init" {
-			if i+1 >= len(argv) || strings.HasPrefix(argv[i+1], "-") {
-				which := arg
-				if i+1 < len(argv) {
-					which = fmt.Sprintf("%s %s", arg, argv[i+1])
-				}
-				return Args{}, fmt.Errorf("fnclaude: %s requires a prompt string", which)
-			}
-			initPrompt = argv[i+1]
-			i += 2
-			continue
-		}
-		if strings.HasPrefix(arg, "-i=") {
-			val := arg[len("-i="):]
-			if val == "" {
-				return Args{}, fmt.Errorf("fnclaude: -i= requires a prompt string")
-			}
-			initPrompt = val
-			i++
-			continue
-		}
-		if strings.HasPrefix(arg, "--init=") {
-			val := arg[len("--init="):]
-			if val == "" {
-				return Args{}, fmt.Errorf("fnclaude: --init= requires a prompt string")
-			}
-			initPrompt = val
-			i++
-			continue
-		}
-
 		// ── Everything else: passthrough ─────────────────────────────────────
 		passthrough = append(passthrough, arg)
 		i++
@@ -134,9 +97,8 @@ func parseArgs(argv []string, home string) (Args, error) {
 	}
 
 	return Args{
-		CWD:         cwd,
-		ExtraDirs:   extraDirs,
-		InitPrompt:  initPrompt,
+		CWD:       cwd,
+		ExtraDirs: extraDirs,
 		Passthrough: passthrough,
 	}, nil
 }
@@ -182,10 +144,6 @@ func buildArgv(a Args, shellCWD string) []string {
 	}
 
 	argv = append(argv, a.Passthrough...)
-
-	if a.InitPrompt != "" {
-		argv = append(argv, "--", a.InitPrompt)
-	}
 
 	return argv
 }
