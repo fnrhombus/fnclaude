@@ -209,6 +209,127 @@ func clearConfigEnv(t *testing.T) {
 	}
 }
 
+// ── configFilePath tests ──────────────────────────────────────────────────
+
+func TestConfigFilePath_XDGSet_UsesXDG(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "/custom/xdg")
+	got := configFilePath()
+	want := "/custom/xdg/fnclaude/config.toml"
+	if got != want {
+		t.Errorf("configFilePath() = %q, want %q", got, want)
+	}
+}
+
+func TestConfigFilePath_XDGUnset_UsesHomeDotConfig(t *testing.T) {
+	// Unset XDG_CONFIG_HOME so the fallback ($HOME/.config) branch fires.
+	os.Unsetenv("XDG_CONFIG_HOME")
+	t.Setenv("HOME", "/fake/home")
+	got := configFilePath()
+	want := "/fake/home/.config/fnclaude/config.toml"
+	if got != want {
+		t.Errorf("configFilePath() = %q, want %q", got, want)
+	}
+}
+
+// ── loadConfig invalid-value branches ─────────────────────────────────────
+
+func TestLoadConfig_InvalidTimeoutInFile_WarnsAndKeepsDefault(t *testing.T) {
+	writeConfigFile(t, `
+[name]
+timeout = "not-a-duration"
+`)
+	clearConfigEnv(t)
+	deferredWarnings = nil
+	t.Cleanup(func() { deferredWarnings = nil })
+
+	cfg := loadConfig()
+	def := defaultConfig()
+	if cfg.Name.Timeout != def.Name.Timeout {
+		t.Errorf("Name.Timeout: got %v, want default %v", cfg.Name.Timeout, def.Name.Timeout)
+	}
+	found := false
+	for _, w := range deferredWarnings {
+		if strings.Contains(w, "invalid timeout") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected deferred warning about invalid timeout, got: %v", deferredWarnings)
+	}
+}
+
+func TestLoadConfig_InvalidEnvTimeout_WarnsAndKeepsCurrent(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	clearConfigEnv(t)
+	t.Setenv("FNCLAUDE_NAME_TIMEOUT", "garbage")
+	deferredWarnings = nil
+	t.Cleanup(func() { deferredWarnings = nil })
+
+	cfg := loadConfig()
+	def := defaultConfig()
+	if cfg.Name.Timeout != def.Name.Timeout {
+		t.Errorf("Name.Timeout: got %v, want default %v", cfg.Name.Timeout, def.Name.Timeout)
+	}
+	found := false
+	for _, w := range deferredWarnings {
+		if strings.Contains(w, "FNCLAUDE_NAME_TIMEOUT") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected deferred warning about FNCLAUDE_NAME_TIMEOUT, got: %v", deferredWarnings)
+	}
+}
+
+func TestLoadConfig_EnvQuietMissingAPIKey(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	clearConfigEnv(t)
+	t.Setenv("FNCLAUDE_QUIET_MISSING_API_KEY", "1")
+
+	cfg := loadConfig()
+	if !cfg.Name.QuietMissingAPIKey {
+		t.Error("Name.QuietMissingAPIKey: got false, want true")
+	}
+}
+
+func TestLoadConfig_EnvIDE(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	clearConfigEnv(t)
+	t.Setenv("FNCLAUDE_IDE", "always")
+
+	cfg := loadConfig()
+	if cfg.Auto.IDE != "always" {
+		t.Errorf("Auto.IDE: got %q, want always", cfg.Auto.IDE)
+	}
+}
+
+// ── normalizeTmuxMode tests ───────────────────────────────────────────────
+
+func TestNormalizeTmuxMode(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"never", "never"},
+		{"worktree", "worktree"},
+		{"", "never"},        // empty → never (no warning)
+		{"always", "never"},  // deprecated → never (warning, covered elsewhere)
+		{"garbage", "never"}, // unknown → never (warning)
+	}
+	for _, tc := range cases {
+		deferredWarnings = nil
+		got := normalizeTmuxMode(tc.in)
+		if got != tc.want {
+			t.Errorf("normalizeTmuxMode(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+	deferredWarnings = nil
+}
+
 func TestLoadConfig_InvalidTmuxValue_NormalizedToNeverWithWarning(t *testing.T) {
 	// Deprecated "always" value (or any unknown string) should normalize to
 	// "never" and queue a stderr warning that fnclaude will flush after exit.
