@@ -332,7 +332,8 @@ func TestBuildArgv_NoExtraDirs(t *testing.T) {
 		Passthrough: []string{"--verbose"},
 	}
 	argv := buildArgv(a, "/shell", defaultConfig())
-	want := []string{"claude", "--dangerously-skip-permissions", "--verbose"}
+	// Default config has auto.dangerously_skip_permissions=false; not injected.
+	want := []string{"claude", "--verbose"}
 	assertArgv(t, argv, want)
 }
 
@@ -344,7 +345,7 @@ func TestBuildArgv_ExtraDirsAbsolute(t *testing.T) {
 	}
 	argv := buildArgv(a, "/shell", defaultConfig())
 	// Expect --add-dir; no --mcp-config or --settings (files don't exist).
-	want := []string{"claude", "--dangerously-skip-permissions", "--add-dir", "/p/extra"}
+	want := []string{"claude", "--add-dir", "/p/extra"}
 	assertArgv(t, argv, want)
 }
 
@@ -355,7 +356,7 @@ func TestBuildArgv_RelativeExtraDirResolved(t *testing.T) {
 	}
 	argv := buildArgv(a, "/shell/cwd", defaultConfig())
 	// The relative path should be joined with shellCWD.
-	want := []string{"claude", "--dangerously-skip-permissions", "--add-dir", "/shell/cwd/relative/dir"}
+	want := []string{"claude", "--add-dir", "/shell/cwd/relative/dir"}
 	assertArgv(t, argv, want)
 }
 
@@ -381,11 +382,47 @@ func TestBuildArgv_MultipleExtraDir_Order(t *testing.T) {
 	}
 	argv := buildArgv(a, "/shell", defaultConfig())
 	want := []string{
-		"claude", "--dangerously-skip-permissions",
+		"claude",
 		"--add-dir", "/p/b",
 		"--add-dir", "/p/c",
 	}
 	assertArgv(t, argv, want)
+}
+
+func TestBuildArgv_AutoSkipPermissions_Injected(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auto.DangerouslySkipPermissions = true
+	a := Args{CWD: "/p/main"}
+	argv := buildArgv(a, "/shell", cfg)
+	assertContains(t, argv, "--dangerously-skip-permissions")
+}
+
+func TestBuildArgv_AutoSkipPermissions_SuppressedByNoPermissions(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auto.DangerouslySkipPermissions = true
+	a := Args{CWD: "/p/main", NoPermissions: true}
+	argv := buildArgv(a, "/shell", cfg)
+	assertNotContains(t, argv, "--dangerously-skip-permissions")
+}
+
+func TestBuildArgv_ExplicitD_WinsOverNoPermissions(t *testing.T) {
+	// -D (translated) puts --dangerously-skip-permissions in passthrough.
+	// --no-permissions sets NoPermissions. Explicit -D still wins.
+	cfg := defaultConfig()
+	a := Args{
+		CWD:           "/p/main",
+		Passthrough:   []string{"--dangerously-skip-permissions"},
+		NoPermissions: true,
+	}
+	argv := buildArgv(a, "/shell", cfg)
+	assertContains(t, argv, "--dangerously-skip-permissions")
+}
+
+func TestBuildArgv_NoAutoSkipPermissions_ByDefault(t *testing.T) {
+	// Default config has auto.dangerously_skip_permissions=false.
+	a := Args{CWD: "/p/main"}
+	argv := buildArgv(a, "/shell", defaultConfig())
+	assertNotContains(t, argv, "--dangerously-skip-permissions")
 }
 
 // ── Short-flag translation tests ───────────────────────────────────────────

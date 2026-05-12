@@ -342,7 +342,17 @@ func tokenInPassthrough(passthrough []string, long string) bool {
 func buildArgv(a Args, shellCWD string, cfg Config) []string {
 	suppressSettings := settingSourcesInPassthrough(a.Passthrough)
 
-	argv := []string{"claude", "--dangerously-skip-permissions"}
+	argv := []string{"claude"}
+
+	// --dangerously-skip-permissions is added only when:
+	//   - User explicitly passed -D (→ --dangerously-skip-permissions in passthrough), OR
+	//   - auto.dangerously_skip_permissions is true AND --no-permissions not eaten.
+	// User-explicit -D wins over --no-permissions (it's already in passthrough, stays there).
+	// This block only handles the auto-injection case; the explicit case is in passthrough.
+	if !tokenInPassthrough(a.Passthrough, "--dangerously-skip-permissions") &&
+		cfg.Auto.DangerouslySkipPermissions && !a.NoPermissions {
+		argv = append(argv, "--dangerously-skip-permissions")
+	}
 
 	// Inject --add-dir (and optional --mcp-config / --settings) for each
 	// extra dir. Paths are resolved relative to the user's shell cwd.
