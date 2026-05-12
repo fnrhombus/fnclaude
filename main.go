@@ -396,6 +396,89 @@ func nameInPassthrough(passthrough []string) bool {
 	return false
 }
 
+// helpText is what `fnclaude --help` / `fnclaude -h` prints.
+const helpText = `fnclaude — claude CLI launcher with quality-of-life features
+
+Usage:
+  fnclaude [MODEL] [EFFORT] [CWD [EXTRA_DIRS...]] [FLAGS...] [-- PROMPT]
+
+Magic positional words (positions 1+2 only, before any path):
+  Position 1 — model alias: opus | sonnet | haiku            → --model <alias>
+  Position 2 — effort level: low | medium | high | xhigh | max → --effort <level>
+                              (only honored when position 1 was a model alias)
+  To use a directory literally named opus/max/etc., prefix with ./
+
+Positional paths:
+  First path  → cwd to launch claude in (fallback ~/.claude/noop)
+  Extra paths → --add-dir; .mcp.json and .claude/settings.json auto-injected
+                if those files exist in the extra-dir
+
+fnclaude-owned flags:
+  -A, --also <dir>     additional extra-dir (repeatable; same effect as 2nd+ positional)
+      --no-tmux        suppress auto-tmux injection for this invocation
+      --no-permissions suppress auto-DSP injection for this invocation
+  -h, --help           show this help
+
+Capital-letter shortcuts (translate to claude long-form flags):
+  -B → --brief                          -M → --permission-mode <mode>
+  -C → --chrome                         -P → --from-pr [value]
+  -D → --dangerously-skip-permissions   -R → --remote-control [name]
+  -F → --fork-session                   -T → --tmux [classic]
+  -G → --agent <agent>                  -V → --verbose
+  -I → --ide                            -W → --allowedTools <tools>
+
+All other claude flags pass through verbatim — run ` + "`claude --help`" + ` for the full
+reference. POSIX collapsing is supported (-BVC = -B -V -C); only the last flag in
+a collapsed group may take a value.
+
+Cross-cwd resume: when claude shows the resume picker and you select a session
+from a different cwd, fnclaude transparently re-launches in that cwd.
+
+Worktree intercept: -w <name> matching an existing worktree of the project repo
+swaps fnclaude's cwd to that worktree. Non-matching names pass through and the
+new worktree's name is also set as the session --name.
+
+Auto-name: when --, a prompt, and no --name/-n flag are all present, fnclaude
+generates a 1-3 word session label via Haiku (falling back to a heuristic).
+Requires ANTHROPIC_API_KEY; warns if missing.
+
+Config file:
+  $XDG_CONFIG_HOME/fnclaude/config.toml (or ~/.config/fnclaude/config.toml)
+
+Environment variables (override config; precedence: CLI > env > config > default):
+  ANTHROPIC_API_KEY                       auth for auto-name LLM call
+  FNCLAUDE_NAME_MODEL                     model for auto-name (default: claude-haiku-4-5)
+  FNCLAUDE_NAME_TIMEOUT                   auto-name LLM timeout (default: 3s)
+  FNCLAUDE_QUIET_MISSING_API_KEY          silence the "API key not set" warning
+  FNCLAUDE_TMUX                           never | worktree | always (default: never)
+  FNCLAUDE_IDE                            never | always (default: never)
+  FNCLAUDE_DANGEROUSLY_SKIP_PERMISSIONS   true to auto-add --dangerously-skip-permissions
+
+Examples:
+  fnclaude                                # interactive in ~/.claude/noop
+  fnclaude opus max ~/src/proj            # opus + max effort, launch in ~/src/proj
+  fnclaude ~/src/a ~/src/b                # main + extra dir with mcp/settings injection
+  fnclaude ~/src/proj -- "fix the bug"    # auto-name from prompt
+  fnclaude -A docs/ ~/src/proj -V         # ergonomic flag form
+
+For more, see https://github.com/fnrhombus/fnclaude
+`
+
+// wantsHelp returns true when the user passed -h or --help anywhere in argv
+// before a literal "--" terminator. Tokens after "--" are part of the prompt
+// to claude and aren't fnclaude flags.
+func wantsHelp(argv []string) bool {
+	for _, t := range argv {
+		if t == "--" {
+			return false
+		}
+		if t == "-h" || t == "--help" {
+			return true
+		}
+	}
+	return false
+}
+
 // agentPitfallWarning is appended to claude's system prompt via
 // --append-system-prompt for any interactive session. It addresses a real
 // foot-gun in Claude Code's Agent tool: when isolation is set to "worktree",
@@ -583,6 +666,11 @@ func buildArgv(a Args, shellCWD string, cfg Config) []string {
 }
 
 func run() int {
+	if wantsHelp(os.Args[1:]) {
+		fmt.Print(helpText)
+		return 0
+	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fnclaude: cannot determine home directory: %v\n", err)

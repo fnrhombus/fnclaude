@@ -1246,3 +1246,55 @@ func TestBuildArgv_OmitsPitfallWarning_WhenPrintMode(t *testing.T) {
 	argv := buildArgv(a, "/shell", Config{})
 	assertNotContains(t, argv, "--append-system-prompt")
 }
+
+// ── --help / wantsHelp tests ───────────────────────────────────────────────
+
+func TestWantsHelp_LongForm(t *testing.T) {
+	if !wantsHelp([]string{"--help"}) {
+		t.Error("expected true for --help")
+	}
+}
+
+func TestWantsHelp_ShortForm(t *testing.T) {
+	if !wantsHelp([]string{"-h"}) {
+		t.Error("expected true for -h")
+	}
+}
+
+func TestWantsHelp_AmongOtherArgs(t *testing.T) {
+	if !wantsHelp([]string{"some-dir", "-V", "--help"}) {
+		t.Error("expected true when --help is mixed in")
+	}
+}
+
+func TestWantsHelp_Absent(t *testing.T) {
+	if wantsHelp([]string{"some-dir", "-V"}) {
+		t.Error("expected false when neither -h nor --help present")
+	}
+}
+
+func TestWantsHelp_EmptyArgv(t *testing.T) {
+	if wantsHelp([]string{}) {
+		t.Error("expected false for empty argv")
+	}
+}
+
+func TestWantsHelp_AfterDashDash_NotTriggered(t *testing.T) {
+	// After `--`, tokens are part of the prompt; --help is the prompt content,
+	// not a fnclaude flag.
+	if wantsHelp([]string{"some-dir", "--", "--help"}) {
+		t.Error("expected false when --help follows --")
+	}
+}
+
+func TestWantsHelp_DashHAfterDashDash_NotTriggered(t *testing.T) {
+	if wantsHelp([]string{"some-dir", "--", "-h"}) {
+		t.Error("expected false when -h follows --")
+	}
+}
+
+func TestWantsHelp_HelpBeforeDashDash_Triggered(t *testing.T) {
+	if !wantsHelp([]string{"some-dir", "--help", "--", "prompt"}) {
+		t.Error("expected true when --help precedes --")
+	}
+}
