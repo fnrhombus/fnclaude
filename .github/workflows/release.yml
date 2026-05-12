@@ -5,6 +5,12 @@ on:
     tags:
       - "v*"
 
+# Don't cancel an in-flight release — a half-published AUR push is worse than
+# a duplicate run.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -28,3 +34,43 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Push fnclaude-bin to the AUR after goreleaser has uploaded the release
+  # tarballs (KSXGitHub/github-actions-deploy-aur fetches them to recompute
+  # sha256sums via updpkgsums).
+  #
+  # Required repo secrets:
+  #   AUR_USERNAME         author name on the AUR push commit
+  #   AUR_EMAIL            author email on the AUR push commit
+  #   AUR_SSH_PRIVATE_KEY  ED25519 private key whose pubkey is registered at
+  #                        https://aur.archlinux.org/account/
+  publish-aur:
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bump pkgver to release tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          cd packaging/aur
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          cat PKGBUILD
+
+      - name: Publish fnclaude-bin to the AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.3
+        with:
+          pkgname: fnclaude-bin
+          pkgbuild: ./packaging/aur/PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Release ${{ github.ref_name }}"
+          updpkgsums: true
+          test: true
+          test_flags: --clean --cleanbuild --syncdeps --noconfirm
+          ssh_keyscan_types: rsa,ecdsa,ed25519
