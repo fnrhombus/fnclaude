@@ -595,12 +595,12 @@ func listWorktrees(dir string) []worktreeInfo {
 // stable identifier for a worktree — its path can be anywhere the creator
 // chose, but its branch is the same string the user typed at creation time.
 //
-//   1. Branch name           ==  query  (matches any worktree, any convention)
-//   2. Branch with `worktree-` prefix stripped == query  (matches Claude's
-//                                                         default `worktree-<name>` branches)
-//   3. Basename of the path  ==  query  (last-resort fallback for worktrees
-//                                        whose branch was renamed or whose
-//                                        creator skipped the convention)
+//  1. Branch name           ==  query  (matches any worktree, any convention)
+//  2. Branch with `worktree-` prefix stripped == query  (matches Claude's
+//     default `worktree-<name>` branches)
+//  3. Basename of the path  ==  query  (last-resort fallback for worktrees
+//     whose branch was renamed or whose
+//     creator skipped the convention)
 //
 // Returns nil when no entry matches.
 func findWorktree(worktrees []worktreeInfo, query string) *worktreeInfo {
