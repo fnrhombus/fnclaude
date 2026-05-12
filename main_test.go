@@ -335,7 +335,8 @@ func TestBuildArgv_NoExtraDirs(t *testing.T) {
 	}
 	argv := buildArgv(a, "/shell", defaultConfig())
 	// Default config has auto.dangerously_skip_permissions=false; not injected.
-	want := []string{"claude", "--verbose"}
+	// withAgentPitfallWarning appends --append-system-prompt at the tail.
+	want := []string{"claude", "--verbose", "--append-system-prompt", agentPitfallWarning}
 	assertArgv(t, argv, want)
 }
 
@@ -347,7 +348,7 @@ func TestBuildArgv_ExtraDirsAbsolute(t *testing.T) {
 	}
 	argv := buildArgv(a, "/shell", defaultConfig())
 	// Expect --add-dir; no --mcp-config or --settings (files don't exist).
-	want := []string{"claude", "--add-dir", "/p/extra"}
+	want := []string{"claude", "--add-dir", "/p/extra", "--append-system-prompt", agentPitfallWarning}
 	assertArgv(t, argv, want)
 }
 
@@ -358,7 +359,7 @@ func TestBuildArgv_RelativeExtraDirResolved(t *testing.T) {
 	}
 	argv := buildArgv(a, "/shell/cwd", defaultConfig())
 	// The relative path should be joined with shellCWD.
-	want := []string{"claude", "--add-dir", "/shell/cwd/relative/dir"}
+	want := []string{"claude", "--add-dir", "/shell/cwd/relative/dir", "--append-system-prompt", agentPitfallWarning}
 	assertArgv(t, argv, want)
 }
 
@@ -387,6 +388,7 @@ func TestBuildArgv_MultipleExtraDir_Order(t *testing.T) {
 		"claude",
 		"--add-dir", "/p/b",
 		"--add-dir", "/p/c",
+		"--append-system-prompt", agentPitfallWarning,
 	}
 	assertArgv(t, argv, want)
 }
@@ -1142,4 +1144,105 @@ func TestApplyWorktreeIntercept_NotARepo_PassthroughPlusName(t *testing.T) {
 	}
 	assertContains(t, a.Passthrough, "--worktree")
 	assertContains(t, a.Passthrough, "--name")
+}
+
+// ── Agent-pitfall warning tests ────────────────────────────────────────────
+
+func TestShouldAppendPitfallWarning_NoPrintFlag(t *testing.T) {
+	if !shouldAppendPitfallWarning([]string{"--verbose", "--model", "sonnet"}) {
+		t.Error("expected true for interactive session")
+	}
+}
+
+func TestShouldAppendPitfallWarning_PrintShort(t *testing.T) {
+	if shouldAppendPitfallWarning([]string{"-p", "do thing"}) {
+		t.Error("expected false when -p present")
+	}
+}
+
+func TestShouldAppendPitfallWarning_PrintLong(t *testing.T) {
+	if shouldAppendPitfallWarning([]string{"--print", "do thing"}) {
+		t.Error("expected false when --print present")
+	}
+}
+
+func TestShouldAppendPitfallWarning_EmptyPassthrough(t *testing.T) {
+	if !shouldAppendPitfallWarning([]string{}) {
+		t.Error("expected true for empty passthrough")
+	}
+}
+
+func TestWithAgentPitfallWarning_NoExisting_Appends(t *testing.T) {
+	in := []string{"--verbose"}
+	out := withAgentPitfallWarning(in)
+	// Should be: [--verbose, --append-system-prompt, <warning>]
+	if len(out) != 3 {
+		t.Fatalf("len: got %d, want 3: %v", len(out), out)
+	}
+	if out[0] != "--verbose" {
+		t.Errorf("[0]: got %q, want --verbose", out[0])
+	}
+	if out[1] != "--append-system-prompt" {
+		t.Errorf("[1]: got %q, want --append-system-prompt", out[1])
+	}
+	if out[2] != agentPitfallWarning {
+		t.Errorf("[2]: got %q, want warning", out[2])
+	}
+}
+
+func TestWithAgentPitfallWarning_PrintMode_SkipsEntirely(t *testing.T) {
+	in := []string{"-p", "prompt text"}
+	out := withAgentPitfallWarning(in)
+	// Should be unchanged.
+	if len(out) != 2 || out[0] != "-p" || out[1] != "prompt text" {
+		t.Errorf("expected unchanged passthrough, got %v", out)
+	}
+}
+
+func TestWithAgentPitfallWarning_ExistingSpaceForm_Merges(t *testing.T) {
+	in := []string{"--append-system-prompt", "user's text"}
+	out := withAgentPitfallWarning(in)
+	if len(out) != 2 {
+		t.Fatalf("len: got %d, want 2: %v", len(out), out)
+	}
+	want := "user's text\n\n" + agentPitfallWarning
+	if out[1] != want {
+		t.Errorf("merged value: got %q, want %q", out[1], want)
+	}
+}
+
+func TestWithAgentPitfallWarning_ExistingEqualsForm_Merges(t *testing.T) {
+	in := []string{"--append-system-prompt=user's text"}
+	out := withAgentPitfallWarning(in)
+	if len(out) != 1 {
+		t.Fatalf("len: got %d, want 1: %v", len(out), out)
+	}
+	want := "--append-system-prompt=user's text\n\n" + agentPitfallWarning
+	if out[0] != want {
+		t.Errorf("merged token: got %q, want %q", out[0], want)
+	}
+}
+
+func TestWithAgentPitfallWarning_DoesNotMutateInput(t *testing.T) {
+	in := []string{"--verbose", "--model", "sonnet"}
+	_ = withAgentPitfallWarning(in)
+	if len(in) != 3 || in[0] != "--verbose" {
+		t.Errorf("input mutated: %v", in)
+	}
+}
+
+func TestBuildArgv_IncludesPitfallWarning_DefaultConfig(t *testing.T) {
+	a := Args{CWD: "/p/main"}
+	argv := buildArgv(a, "/shell", Config{})
+	assertContains(t, argv, "--append-system-prompt")
+	assertContains(t, argv, agentPitfallWarning)
+}
+
+func TestBuildArgv_OmitsPitfallWarning_WhenPrintMode(t *testing.T) {
+	a := Args{
+		CWD:         "/p/main",
+		Passthrough: []string{"-p", "the prompt"},
+	}
+	argv := buildArgv(a, "/shell", Config{})
+	assertNotContains(t, argv, "--append-system-prompt")
 }

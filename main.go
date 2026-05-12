@@ -396,6 +396,51 @@ func nameInPassthrough(passthrough []string) bool {
 	return false
 }
 
+// agentPitfallWarning is appended to claude's system prompt via
+// --append-system-prompt for any interactive session. It addresses a real
+// foot-gun in Claude Code's Agent tool: when isolation is set to "worktree",
+// an agent whose prompt names a path will cd to that path and silently
+// bypass its isolated working directory.
+const agentPitfallWarning = `When using the Task / Agent tool with isolation set to "worktree", do not name the main repo's absolute path in the spawn prompt — the agent will cd there and silently bypass its isolated worktree. Phrase locations as "your worktree" or "this directory", and verify with git log on the worktree branch after the agent reports done.`
+
+// shouldAppendPitfallWarning reports whether the agent-pitfall warning is
+// relevant for this invocation. Skipped for -p / --print (one-shot
+// non-interactive) where agent spawning is unusual and the system-prompt
+// overhead isn't worth paying.
+func shouldAppendPitfallWarning(passthrough []string) bool {
+	for _, t := range passthrough {
+		if t == "-p" || t == "--print" {
+			return false
+		}
+	}
+	return true
+}
+
+// withAgentPitfallWarning returns a copy of passthrough with the
+// agent-pitfall warning injected into --append-system-prompt. If the user
+// already passed --append-system-prompt, the warning is concatenated to
+// their value (separated by a blank line). Skipped entirely when
+// shouldAppendPitfallWarning is false.
+func withAgentPitfallWarning(passthrough []string) []string {
+	if !shouldAppendPitfallWarning(passthrough) {
+		return passthrough
+	}
+	for i, t := range passthrough {
+		if t == "--append-system-prompt" && i+1 < len(passthrough) {
+			out := append([]string{}, passthrough...)
+			out[i+1] = passthrough[i+1] + "\n\n" + agentPitfallWarning
+			return out
+		}
+		if strings.HasPrefix(t, "--append-system-prompt=") {
+			existing := t[len("--append-system-prompt="):]
+			out := append([]string{}, passthrough...)
+			out[i] = "--append-system-prompt=" + existing + "\n\n" + agentPitfallWarning
+			return out
+		}
+	}
+	return append(append([]string{}, passthrough...), "--append-system-prompt", agentPitfallWarning)
+}
+
 // gitRunner is a function type that runs a git command in a directory and
 // returns stdout. It is a variable so tests can substitute a fake.
 var gitRunner = func(dir string, args ...string) ([]byte, error) {
@@ -532,7 +577,7 @@ func buildArgv(a Args, shellCWD string, cfg Config) []string {
 		}
 	}
 
-	argv = append(argv, a.Passthrough...)
+	argv = append(argv, withAgentPitfallWarning(a.Passthrough)...)
 
 	return argv
 }
