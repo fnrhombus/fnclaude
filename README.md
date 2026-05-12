@@ -210,8 +210,9 @@ most invocations translate directly. Two things changed:
    per-invocation with `-D`.
 2. **No `-i`/`--init` flag.** Dropped; use `claude`'s native init flow if you need it.
 
-Everything else — multi-dir injection, short flags, MCP config auto-wiring — works the same. Point
-your existing `cclaude` alias at `fnclaude` and it'll behave.
+Everything else — multi-dir injection, short flags, MCP config auto-wiring — works the same.
+Just remove the `cclaude` function from your shell aliases and call `fnclaude` (or the `fnc`
+shortcut once the shell completion is loaded) directly.
 
 
 ## Support

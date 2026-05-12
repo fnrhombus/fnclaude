@@ -1,2 +1,15 @@
 [tools]
 go = "1.24"
+
+[tasks.build]
+description = "Build the fnclaude binary into bin/"
+run = "go build -o bin/fnclaude ./src/"
+
+[tasks.test]
+description = "Run the Go test suite"
+run = "go test -count=1 ./..."
+
+[tasks.install]
+description = "Build + symlink bin/fnclaude into ~/.local/bin/"
+depends = ["build"]
+run = "ln -sf $PWD/bin/fnclaude $HOME/.local/bin/fnclaude"

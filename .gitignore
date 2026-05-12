@@ -1,5 +1,5 @@
-# Built binary
-fnclaude
+# Built binaries (mise run build writes to bin/)
+bin/
 
 # IDE / editor noise
 .idea/
