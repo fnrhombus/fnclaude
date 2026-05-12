@@ -50,7 +50,8 @@ Full mapping in the [reference section](#short-translations-fnclaude--claude) be
 ### Prompt after `--`
 
 Pass a prompt inline without `--print` or redirection — just drop a `--` and write the prompt.
-Session naming from the prompt text is on the roadmap; for now the prompt is forwarded verbatim.
+When `--name`/`-n` isn't already set, fnclaude generates a 1–3-word session label from the prompt
+via Haiku (see [Auto-name from prompt](#auto-name-from-prompt) below).
 
 ```sh
 fnclaude sonnet src/ -- "add integration tests for the payments module"
@@ -89,6 +90,66 @@ dangerously_skip_permissions = true  # inject -D on every launch
 All three are off by default. Per-invocation overrides (`--no-tmux`, `--no-permissions`) let you
 escape for a single run without touching config.
 
+`auto.tmux = "always"` injects both `--worktree` (bare; claude auto-names the wt) and `--tmux` on
+every launch — claude requires `--worktree` whenever `--tmux` is set. So "always" means "every
+session is its own worktree + tmux pair." Use `"worktree"` instead if you only want tmux when you
+explicitly pass `-w`.
+
+
+### Auto-name from prompt
+
+When you pass a prompt after `--` (and aren't resuming an existing session), fnclaude generates a
+short hyphenated session label via Haiku and injects it as `--name`. The call has a 3-second
+timeout; on timeout, missing API key, or any error, it falls back to a heuristic that strips
+stop-words and takes the first three meaningful tokens.
+
+```sh
+fnclaude . -- "refactor the auth module"
+# → --name refactor-auth-module
+```
+
+Skipped for `-p`/`--print`, `-r`/`--resume`, `-c`/`--continue`, and `--from-pr` — those don't
+create new named sessions. Requires `ANTHROPIC_API_KEY`; suppress the missing-key warning with
+`FNCLAUDE_QUIET_MISSING_API_KEY=1` (or the config equivalent) if you'd rather just rely on the
+heuristic.
+
+
+### Cross-cwd `--resume`
+
+`claude --resume` normally exits with a "this conversation is from a different directory" message
+when you pick a session from elsewhere via the picker. fnclaude scans the last 4 KB of claude's
+output, catches that message after exit, and transparently `syscall.Exec`s a fresh fnclaude in the
+destination directory. The picker just _works_ across all your projects — no flicker, no manual
+`cd`.
+
+Linux and macOS only; on Windows fnclaude falls back to a plain exec (no PTY, no detection).
+
+
+### Worktree intercept
+
+`fnclaude -w <name>` looks up `<name>` against the existing git worktrees of the project repo.
+If it matches, fnclaude swaps its cwd to that worktree and drops the `-w` flag — no new wt is
+created, no duplicate. If it doesn't match, the flag passes through and the name doubles as the
+session `--name`.
+
+```sh
+fnclaude -w feature-branch    # cds to the feature-branch worktree if it exists
+fnclaude -w new-thing         # passes -w new-thing through; sets --name new-thing
+```
+
+Shell completion (zsh, bash, fish) suggests existing worktree names for `-w` / `--worktree`.
+
+
+### Shell completion
+
+Completions for zsh, bash, and fish ship in the `completions/` directory. All three include smart
+`-w` / `--worktree` completion that calls `git worktree list` to enumerate existing worktree
+basenames.
+
+- **zsh** — copy or symlink `completions/_fnclaude` to a directory in `$fpath`, then run `compinit`.
+- **bash** — `source` `completions/fnclaude.bash` from your `.bashrc`.
+- **fish** — copy `completions/fnclaude.fish` to `~/.config/fish/completions/`.
+
 
 ### Install
 
@@ -109,9 +170,9 @@ go install github.com/fnrhombus/fnclaude@latest
 
 winget and mise packages are planned but not yet available.
 
-Linux is the daily-driver target. macOS and Windows binaries ship in every release; Windows skips
-PTY-dependent features (cross-cwd resume, worktree intercept) because Windows console makes those
-painful to implement correctly.
+Linux is the daily-driver target. macOS and Windows binaries ship in every release; on Windows,
+cross-cwd resume isn't available yet (it needs a PTY shim that Windows console makes painful).
+Everything else works identically.
 
 
 ## Quickstart
@@ -226,6 +287,7 @@ fnclaude sonnet src/ -- "do the thing"
 | | `--no-permissions` | Suppress auto-`--dangerously-skip-permissions` for this invocation |
 | `-A <dir>` | `--also <dir>` | Add an extra dir (repeatable; supports `=` syntax) |
 | `-h` | `--help` | Print the fnclaude flag reference and exit |
+| `-v` | `--version` | Print fnclaude's version and exit (shadows `claude`'s `-v`; use `claude --version` for that) |
 
 ### Short translations (fnclaude → claude)
 
@@ -264,8 +326,8 @@ Precedence: **CLI flag > env var > config file > built-in default**
 
 ```toml
 [name]
-model = "claude-haiku-4-5"   # model for LLM-generated session names (roadmap)
-timeout = "3s"               # timeout for name-generation calls (roadmap)
+model = "claude-haiku-4-5"   # model for auto-generated session names
+timeout = "3s"               # timeout for the name-generation API call
 quiet_missing_api_key = false
 
 [auto]
@@ -285,8 +347,7 @@ dangerously_skip_permissions = false
 | `auto.ide` | `FNCLAUDE_IDE` |
 | `auto.dangerously_skip_permissions` | `FNCLAUDE_DANGEROUSLY_SKIP_PERMISSIONS` |
 
-`ANTHROPIC_API_KEY` is also read (standard) and will be used for
-LLM-generated session name calls once that feature ships.
+`ANTHROPIC_API_KEY` is read (standard) for the auto-name LLM call.
 
 ## Auto-features
 
@@ -305,12 +366,17 @@ or via `FNCLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=true`, or per-invocation with
 
 ### Auto `--tmux`
 
-Controls whether fnclaude automatically appends `--tmux` to the claude
-invocation:
+Controls auto-injection of `--tmux`. claude rejects `--tmux` unless `--worktree`
+is also set, so the modes account for that:
 
-- `"never"` (default) — no-op
-- `"worktree"` — inject when `-w`/`--worktree` is present in the args
-- `"always"` — inject on every launch
+- `"never"` (default) — no-op.
+- `"worktree"` — inject `--tmux` when the user is creating a *new* worktree
+  (`-w <new-name>` that didn't match an existing one). `--worktree` is
+  necessarily present in that case, so claude's constraint is satisfied.
+- `"always"` — inject *both* `--worktree` (bare; claude auto-names the wt) and
+  `--tmux` on every launch. Effectively: every session becomes its own
+  worktree + tmux pair. Skipped when the user already passed `-w` themselves —
+  their worktree value wins.
 
 Suppress for a single invocation with `--no-tmux`.
 
@@ -321,17 +387,11 @@ opt-out flag; unset the env var or config key to disable.
 
 ## Roadmap
 
-The following features are not yet shipped:
-
-- **Auto `--name` from prompt** — when `--` is followed by a prompt, call Haiku
-  4.5 to generate a 1-3 word session label, with a heuristic fallback on
-  timeout.
-- **Cross-cwd `--resume`** — transparent re-launch when `claude` exits with the
-  "different directory" message.
-- **Worktree intercept** — `-w existing-wt-name` cds to that worktree;
-  `-w new-wt-name` has `claude` create the worktree and fnclaude sets `--name`
-  automatically.
-- **Shell completion** — zsh, bash, and fish.
+- **Windows cross-cwd resume** — currently Linux/macOS only; needs a Windows
+  console PTY shim.
+- **winget submission** — manifest scaffolding is in `packaging/winget/`;
+  pending a Windows verification pass.
+- **mise / aqua install path** — not yet packaged for either.
 
 ## License
 
