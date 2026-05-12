@@ -1388,16 +1388,17 @@ func TestFindWorktree_MatchByBranchWithWorktreePrefixStripped(t *testing.T) {
 	}
 }
 
-func TestFindWorktree_BasenameWinsOverBranch(t *testing.T) {
-	// If both strategies could match, basename takes priority (it's the most
-	// direct interpretation of what the user typed).
+func TestFindWorktree_BranchWinsOverBasename(t *testing.T) {
+	// Branch is the semantically stable identifier — the same string the user
+	// typed at creation time. Path basename can be anywhere the creator chose.
+	// When both strategies could match different worktrees, branch wins.
 	wts := []worktreeInfo{
-		{Path: "/repo/main", Branch: "feat-x"},   // branch matches "feat-x"
 		{Path: "/repo/feat-x", Branch: "other"}, // basename matches "feat-x"
+		{Path: "/repo/main", Branch: "feat-x"},  // branch matches "feat-x"
 	}
 	hit := findWorktree(wts, "feat-x")
-	if hit == nil || hit.Path != "/repo/feat-x" {
-		t.Errorf("basename should win, got %+v", hit)
+	if hit == nil || hit.Path != "/repo/main" {
+		t.Errorf("branch should win, got %+v", hit)
 	}
 }
 

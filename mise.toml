@@ -9,7 +9,7 @@ run = "go build -o bin/fnclaude ./src/"
 description = "Run the Go test suite"
 run = "go test -count=1 ./..."
 
-[tasks.install]
-description = "Build + symlink bin/fnclaude into ~/.local/bin/"
+[tasks.install-dev]
+description = "Build + symlink bin/fnclaude into ~/.local/bin/fnc-dev (deliberately separate from the AUR-installed `fnclaude` so dev builds don't shadow the release binary)"
 depends = ["build"]
-run = "ln -sf $PWD/bin/fnclaude $HOME/.local/bin/fnclaude"
+run = "ln -sf $PWD/bin/fnclaude $HOME/.local/bin/fnc-dev"

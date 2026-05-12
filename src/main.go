@@ -591,15 +591,18 @@ func listWorktrees(dir string) []worktreeInfo {
 }
 
 // findWorktree picks the worktreeInfo matching query, trying three strategies
-// in order:
-//   1. basename of the path  ==  query  (catches default `.claude/worktrees/<name>`)
-//   2. branch name           ==  query  (catches custom convention with bare branch names)
-//   3. branch with `worktree-` prefix stripped == query (catches Claude's default branch naming)
+// in order. Branch name is checked first since the branch is the semantically
+// stable identifier for a worktree — its path can be anywhere the creator
+// chose, but its branch is the same string the user typed at creation time.
 //
-// Returns nil when no entry matches. The strategies cover both Claude's
-// default conventions and the local `<repo>+<wtname>` convention without
-// having to special-case either layout in code — git tells us the path and
-// branch; we match on whichever shape happens to fit.
+//   1. Branch name           ==  query  (matches any worktree, any convention)
+//   2. Branch with `worktree-` prefix stripped == query  (matches Claude's
+//                                                         default `worktree-<name>` branches)
+//   3. Basename of the path  ==  query  (last-resort fallback for worktrees
+//                                        whose branch was renamed or whose
+//                                        creator skipped the convention)
+//
+// Returns nil when no entry matches.
 func findWorktree(worktrees []worktreeInfo, query string) *worktreeInfo {
 	if query == "" {
 		// Defensive: never match against detached worktrees (Branch="") or
@@ -609,17 +612,17 @@ func findWorktree(worktrees []worktreeInfo, query string) *worktreeInfo {
 		return nil
 	}
 	for i := range worktrees {
-		if filepath.Base(worktrees[i].Path) == query {
-			return &worktrees[i]
-		}
-	}
-	for i := range worktrees {
 		if worktrees[i].Branch == query {
 			return &worktrees[i]
 		}
 	}
 	for i := range worktrees {
-		if strings.TrimPrefix(worktrees[i].Branch, "worktree-") == query && worktrees[i].Branch != "" {
+		if worktrees[i].Branch != "" && strings.TrimPrefix(worktrees[i].Branch, "worktree-") == query {
+			return &worktrees[i]
+		}
+	}
+	for i := range worktrees {
+		if filepath.Base(worktrees[i].Path) == query {
 			return &worktrees[i]
 		}
 	}
