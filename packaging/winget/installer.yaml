@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
+
+PackageIdentifier: fnrhombus.fnclaude
+PackageVersion: 0.0.0
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: fnclaude.exe
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/fnrhombus/fnclaude/releases/download/v0.0.0/fnclaude_Windows_x86_64.zip
+    InstallerSha256: PLACEHOLDER
+ManifestType: installer
+ManifestVersion: 1.9.0

@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.9.0.schema.json
+
+PackageIdentifier: fnrhombus.fnclaude
+PackageVersion: 0.0.0
+PackageLocale: en-US
+Publisher: Thomas Butler
+PublisherUrl: https://github.com/fnrhombus
+PublisherSupportUrl: https://github.com/fnrhombus/fnclaude/issues
+Author: Thomas Butler
+PackageName: fnclaude
+PackageUrl: https://github.com/fnrhombus/fnclaude
+License: MIT
+LicenseUrl: https://github.com/fnrhombus/fnclaude/blob/main/LICENSE
+Copyright: Copyright (c) Thomas Butler
+ShortDescription: A claude CLI launcher with quality-of-life features
+Tags:
+  - claude
+  - cli
+  - ai
+ManifestType: defaultLocale
+ManifestVersion: 1.9.0
