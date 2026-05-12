@@ -160,6 +160,110 @@ func TestParseArgs_PassthroughOrdering(t *testing.T) {
 	}
 }
 
+// ── Magic positional tests ─────────────────────────────────────────────────
+
+func TestParseArgs_MagicModel_BeforePath(t *testing.T) {
+	a, err := parseArgs([]string{"opus", "/proj/p"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.CWD != "/proj/p" {
+		t.Errorf("CWD: got %q", a.CWD)
+	}
+	if len(a.Passthrough) != 2 || a.Passthrough[0] != "--model" || a.Passthrough[1] != "opus" {
+		t.Errorf("Passthrough: got %v, want [--model opus]", a.Passthrough)
+	}
+}
+
+func TestParseArgs_MagicEffort_BeforePath(t *testing.T) {
+	a, err := parseArgs([]string{"max", "/proj/p"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.CWD != "/proj/p" {
+		t.Errorf("CWD: got %q", a.CWD)
+	}
+	if len(a.Passthrough) != 2 || a.Passthrough[0] != "--effort" || a.Passthrough[1] != "max" {
+		t.Errorf("Passthrough: got %v, want [--effort max]", a.Passthrough)
+	}
+}
+
+func TestParseArgs_MagicModelAndEffort(t *testing.T) {
+	a, err := parseArgs([]string{"opus", "max", "/proj/p"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.CWD != "/proj/p" {
+		t.Errorf("CWD: got %q", a.CWD)
+	}
+	// --model opus --effort max must be first in passthrough
+	want := []string{"--model", "opus", "--effort", "max"}
+	if len(a.Passthrough) != len(want) {
+		t.Fatalf("Passthrough: got %v, want %v", a.Passthrough, want)
+	}
+	for i, w := range want {
+		if a.Passthrough[i] != w {
+			t.Errorf("Passthrough[%d]: got %q, want %q", i, a.Passthrough[i], w)
+		}
+	}
+}
+
+func TestParseArgs_MagicModel_LastWins(t *testing.T) {
+	a, err := parseArgs([]string{"opus", "sonnet", "/proj/p"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// sonnet wins over opus
+	if len(a.Passthrough) != 2 || a.Passthrough[0] != "--model" || a.Passthrough[1] != "sonnet" {
+		t.Errorf("Passthrough: got %v, want [--model sonnet]", a.Passthrough)
+	}
+}
+
+func TestParseArgs_MagicOnly_NoPath_FallsBackToNoop(t *testing.T) {
+	a, err := parseArgs([]string{"opus"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.CWD != noopDir {
+		t.Errorf("CWD: got %q, want %q", a.CWD, noopDir)
+	}
+	if len(a.Passthrough) != 2 || a.Passthrough[0] != "--model" || a.Passthrough[1] != "opus" {
+		t.Errorf("Passthrough: got %v, want [--model opus]", a.Passthrough)
+	}
+}
+
+func TestParseArgs_MagicOff_AfterFirstPath(t *testing.T) {
+	// magic is disabled after the first non-magic positional; "sonnet" here is
+	// treated as an extra dir, not a model alias.
+	a, err := parseArgs([]string{"/proj/p", "sonnet"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.CWD != "/proj/p" {
+		t.Errorf("CWD: got %q", a.CWD)
+	}
+	if len(a.ExtraDirs) != 1 || a.ExtraDirs[0] != "sonnet" {
+		t.Errorf("ExtraDirs: got %v, want [sonnet]", a.ExtraDirs)
+	}
+	if len(a.Passthrough) != 0 {
+		t.Errorf("Passthrough: got %v, want empty", a.Passthrough)
+	}
+}
+
+func TestParseArgs_DotPrefixedPath_NoMagic(t *testing.T) {
+	// ./opus is a literal path, not a magic word.
+	a, err := parseArgs([]string{"./opus"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.CWD != "./opus" {
+		t.Errorf("CWD: got %q, want ./opus", a.CWD)
+	}
+	if len(a.Passthrough) != 0 {
+		t.Errorf("Passthrough: got %v, want empty", a.Passthrough)
+	}
+}
+
 // ── buildArgv tests ────────────────────────────────────────────────────────
 // These tests work against a synthetic fs view where we control which files
 // "exist". We test argv assembly without actually execing claude.

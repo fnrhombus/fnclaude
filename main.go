@@ -23,6 +23,22 @@ type Args struct {
 	Passthrough []string
 }
 
+// modelAliases is the set of magic tokens that map to --model.
+var modelAliases = map[string]bool{
+	"opus":   true,
+	"sonnet": true,
+	"haiku":  true,
+}
+
+// effortLevels is the set of magic tokens that map to --effort.
+var effortLevels = map[string]bool{
+	"low":    true,
+	"medium": true,
+	"high":   true,
+	"xhigh":  true,
+	"max":    true,
+}
+
 // parseArgs parses os.Args[1:] and returns the structured result.
 // home is the value to use for the noop fallback (typically os.UserHomeDir()).
 func parseArgs(argv []string, home string) (Args, error) {
@@ -30,7 +46,13 @@ func parseArgs(argv []string, home string) (Args, error) {
 	var extraDirs []string
 	var passthrough []string
 
-	inFlags := false // once true, non-flag tokens go to passthrough
+	// Magic model/effort tokens discovered before the first path positional.
+	// Last-wins: later token overwrites earlier.
+	magicModel := ""
+	magicEffort := ""
+
+	inFlags := false   // once true, non-flag tokens go to passthrough
+	magicDone := false // once true, no more magic scanning (first path seen)
 	firstPathSet := false
 
 	i := 0
@@ -39,6 +61,22 @@ func parseArgs(argv []string, home string) (Args, error) {
 
 		// ── Positional collection (before first flag-shaped token) ───────────
 		if !inFlags && !strings.HasPrefix(arg, "-") {
+			// While magic scanning is active, check for model/effort aliases.
+			if !magicDone {
+				if modelAliases[arg] {
+					magicModel = arg
+					i++
+					continue
+				}
+				if effortLevels[arg] {
+					magicEffort = arg
+					i++
+					continue
+				}
+				// Not a magic word — this is the cwd; disable magic.
+				magicDone = true
+			}
+
 			if !firstPathSet {
 				firstPath = arg
 				firstPathSet = true
@@ -90,6 +128,19 @@ func parseArgs(argv []string, home string) (Args, error) {
 		i++
 	}
 
+	// Prepend --model / --effort tokens from magic positionals (last-wins
+	// means the magic vars already hold the correct final value).
+	var magicPrefix []string
+	if magicModel != "" {
+		magicPrefix = append(magicPrefix, "--model", magicModel)
+	}
+	if magicEffort != "" {
+		magicPrefix = append(magicPrefix, "--effort", magicEffort)
+	}
+	if len(magicPrefix) > 0 {
+		passthrough = append(magicPrefix, passthrough...)
+	}
+
 	// CWD fallback.
 	cwd := filepath.Join(home, ".claude", "noop")
 	if firstPathSet {
@@ -97,8 +148,8 @@ func parseArgs(argv []string, home string) (Args, error) {
 	}
 
 	return Args{
-		CWD:       cwd,
-		ExtraDirs: extraDirs,
+		CWD:         cwd,
+		ExtraDirs:   extraDirs,
 		Passthrough: passthrough,
 	}, nil
 }
