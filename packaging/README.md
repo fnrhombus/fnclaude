@@ -1,13 +1,30 @@
 # Cutting a release
 
-## 1. Tag and push
+Releases are driven by [release-please](https://github.com/googleapis/release-please): every push to `main` is parsed for [conventional commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `feat!:`, etc.) and an open "Release v0.X.Y" PR is kept up to date with the next version's CHANGELOG. Merging that PR cuts the release.
 
-```sh
-git tag v0.1.0
-git push origin v0.1.0
-```
+## 1. Author commits in conventional form
 
-The `release.yml` workflow fires on any `v*` tag. goreleaser builds all targets, creates the GitHub Release, and uploads:
+| Type | Effect | Example |
+|---|---|---|
+| `feat:` | minor version bump | `feat: add --no-tmux opt-out` |
+| `fix:` | patch version bump | `fix: handle bare -A at end of argv` |
+| `feat!:` / `BREAKING CHANGE:` in body | major version bump | `feat!: rename --also to --add` |
+| `docs:`, `refactor:` | no bump (shown in changelog) | `docs: clarify magic positional rules` |
+| `build:`, `ci:`, `chore:`, `test:` | no bump, hidden from changelog | `chore: bump go.mod to 1.25` |
+
+Bodies and footers are free-form. Multi-line is fine.
+
+## 2. Merge the Release PR
+
+`release-please` keeps a `chore(main): release v0.X.Y` PR open at all times when there are releasable commits on `main`. Review the proposed version + CHANGELOG, merge it. release-please:
+
+- Tags `vX.Y.Z` on `main`
+- Creates a GitHub Release with the generated CHANGELOG section
+- Updates `.release-please-manifest.json`
+
+## 3. goreleaser fires automatically
+
+The `release.yml` workflow listens for any `v*` tag — when release-please pushes the tag, goreleaser builds all targets and uploads:
 
 - `fnclaude_Linux_x86_64.tar.gz`
 - `fnclaude_Linux_arm64.tar.gz`
@@ -16,7 +33,7 @@ The `release.yml` workflow fires on any `v*` tag. goreleaser builds all targets,
 - `fnclaude_Windows_x86_64.zip`
 - `checksums.txt`
 
-## 2. AUR package (`fnclaude-bin`)
+## 4. AUR package (`fnclaude-bin`)
 
 After the GitHub Release is up:
 
@@ -28,7 +45,7 @@ After the GitHub Release is up:
    ```
 4. Push both files to the `fnclaude-bin` AUR git repo.
 
-## 3. winget
+## 5. winget
 
 After the GitHub Release is up:
 
