@@ -15,7 +15,7 @@ type Args struct {
 	// ~/.claude/noop when no positionals given).
 	CWD string
 
-	// ExtraDirs collects positional[1:] and all -a/--also values, in order.
+	// ExtraDirs collects positional[1:] and all -A/--also values, in order.
 	ExtraDirs []string
 
 	// InitPrompt is the value of -i/--init, empty if not given.
@@ -56,9 +56,9 @@ func parseArgs(argv []string, home string) (Args, error) {
 		// Anything from here on: we are in flag territory.
 		inFlags = true
 
-		// ── -a / --also ──────────────────────────────────────────────────────
-		// Supported forms: -a <val>, -a=<val>, --also <val>, --also=<val>
-		if arg == "-a" || arg == "--also" {
+		// ── -A / --also ──────────────────────────────────────────────────────
+		// Supported forms: -A <val>, -A=<val>, --also <val>, --also=<val>
+		if arg == "-A" || arg == "--also" {
 			if i+1 >= len(argv) || strings.HasPrefix(argv[i+1], "-") {
 				which := arg
 				if i+1 < len(argv) {
@@ -70,10 +70,10 @@ func parseArgs(argv []string, home string) (Args, error) {
 			i += 2
 			continue
 		}
-		if strings.HasPrefix(arg, "-a=") {
-			val := arg[len("-a="):]
+		if strings.HasPrefix(arg, "-A=") {
+			val := arg[len("-A="):]
 			if val == "" {
-				return Args{}, fmt.Errorf("fnclaude: -a= requires a directory argument")
+				return Args{}, fmt.Errorf("fnclaude: -A= requires a directory argument")
 			}
 			extraDirs = append(extraDirs, val)
 			i++

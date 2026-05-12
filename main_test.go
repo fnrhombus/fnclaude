@@ -55,7 +55,7 @@ func TestParseArgs_ZeroPositionals_Fallback(t *testing.T) {
 }
 
 func TestParseArgs_MixedPositionalAndAlso(t *testing.T) {
-	a, err := parseArgs([]string{"/p/main", "/p/extra1", "--also", "/p/extra2", "-a", "/p/extra3"}, testHome)
+	a, err := parseArgs([]string{"/p/main", "/p/extra1", "--also", "/p/extra2", "-A", "/p/extra3"}, testHome)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestParseArgs_InitFlag_Equals_Long(t *testing.T) {
 }
 
 func TestParseArgs_AlsoEquals(t *testing.T) {
-	a, err := parseArgs([]string{"/p/main", "-a=/p/extra"}, testHome)
+	a, err := parseArgs([]string{"/p/main", "-A=/p/extra"}, testHome)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,16 +127,16 @@ func TestParseArgs_AlsoLongEquals(t *testing.T) {
 // Missing-value errors.
 
 func TestParseArgs_MissingValue_Also_AtEOF(t *testing.T) {
-	_, err := parseArgs([]string{"/p/x", "-a"}, testHome)
+	_, err := parseArgs([]string{"/p/x", "-A"}, testHome)
 	if err == nil {
-		t.Fatal("expected error for -a with no value")
+		t.Fatal("expected error for -A with no value")
 	}
 }
 
 func TestParseArgs_MissingValue_Also_NextIsFlag(t *testing.T) {
-	_, err := parseArgs([]string{"/p/x", "-a", "--some-flag"}, testHome)
+	_, err := parseArgs([]string{"/p/x", "-A", "--some-flag"}, testHome)
 	if err == nil {
-		t.Fatal("expected error for -a followed by flag")
+		t.Fatal("expected error for -A followed by flag")
 	}
 }
 
