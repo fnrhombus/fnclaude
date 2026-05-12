@@ -335,6 +335,17 @@ func tokenInPassthrough(passthrough []string, long string) bool {
 	return false
 }
 
+// worktreeInPassthrough returns true if the passthrough slice contains a raw
+// -w or --worktree token. Used by the auto.tmux="worktree" heuristic.
+func worktreeInPassthrough(passthrough []string) bool {
+	for _, t := range passthrough {
+		if t == "-w" || t == "--worktree" || strings.HasPrefix(t, "--worktree=") {
+			return true
+		}
+	}
+	return false
+}
+
 // buildArgv constructs the argv slice to exec claude with, given the parsed
 // args, the user's shell cwd (used to resolve relative extra-dir paths), and
 // the loaded config.
@@ -378,6 +389,21 @@ func buildArgv(a Args, shellCWD string, cfg Config) []string {
 	// Auto-inject --ide if auto.ide == "always" and --ide not already in passthrough.
 	if cfg.Auto.IDE == "always" && !tokenInPassthrough(a.Passthrough, "--ide") {
 		argv = append(argv, "--ide")
+	}
+
+	// Auto-inject --tmux based on auto.tmux config.
+	// Note: the worktree detection below checks raw passthrough tokens for -w /
+	// --worktree. Once Feature 3 lands and fnclaude intercepts -w natively, this
+	// heuristic will be replaced with an Args field.
+	if !tokenInPassthrough(a.Passthrough, "--tmux") && !a.NoTmux {
+		switch cfg.Auto.Tmux {
+		case "always":
+			argv = append(argv, "--tmux")
+		case "worktree":
+			if worktreeInPassthrough(a.Passthrough) {
+				argv = append(argv, "--tmux")
+			}
+		}
 	}
 
 	argv = append(argv, a.Passthrough...)

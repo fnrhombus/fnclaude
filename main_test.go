@@ -463,6 +463,101 @@ func TestBuildArgv_AutoIDE_AlreadyInPassthrough_NotDuplicated(t *testing.T) {
 	}
 }
 
+// ── Auto-TMUX injection tests ──────────────────────────────────────────────
+
+func TestBuildArgv_AutoTmux_Always_Injected(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auto.Tmux = "always"
+	a := Args{CWD: "/p/main"}
+	argv := buildArgv(a, "/shell", cfg)
+	assertContains(t, argv, "--tmux")
+}
+
+func TestBuildArgv_AutoTmux_Never_NotInjected(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auto.Tmux = "never"
+	a := Args{CWD: "/p/main"}
+	argv := buildArgv(a, "/shell", cfg)
+	assertNotContains(t, argv, "--tmux")
+}
+
+func TestBuildArgv_AutoTmux_Always_SuppressedByNoTmux(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auto.Tmux = "always"
+	a := Args{CWD: "/p/main", NoTmux: true}
+	argv := buildArgv(a, "/shell", cfg)
+	assertNotContains(t, argv, "--tmux")
+}
+
+func TestBuildArgv_AutoTmux_Always_AlreadyInPassthrough_NotDuplicated(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auto.Tmux = "always"
+	a := Args{
+		CWD:         "/p/main",
+		Passthrough: []string{"--tmux"},
+	}
+	argv := buildArgv(a, "/shell", cfg)
+	count := 0
+	for _, tok := range argv {
+		if tok == "--tmux" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("--tmux appears %d times in argv, want exactly 1: %v", count, argv)
+	}
+}
+
+func TestBuildArgv_AutoTmux_Worktree_WithWorktreeFlag(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auto.Tmux = "worktree"
+	a := Args{
+		CWD:         "/p/main",
+		Passthrough: []string{"--worktree"},
+	}
+	argv := buildArgv(a, "/shell", cfg)
+	assertContains(t, argv, "--tmux")
+}
+
+func TestBuildArgv_AutoTmux_Worktree_WithShortW(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auto.Tmux = "worktree"
+	a := Args{
+		CWD:         "/p/main",
+		Passthrough: []string{"-w"},
+	}
+	argv := buildArgv(a, "/shell", cfg)
+	assertContains(t, argv, "--tmux")
+}
+
+func TestBuildArgv_AutoTmux_Worktree_WithoutWorktreeFlag(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auto.Tmux = "worktree"
+	a := Args{CWD: "/p/main"}
+	argv := buildArgv(a, "/shell", cfg)
+	assertNotContains(t, argv, "--tmux")
+}
+
+func TestBuildArgv_AutoTmux_Always_ExplicitTNotDuplicated(t *testing.T) {
+	// -T translates to --tmux; auto.tmux=always must not add a second.
+	cfg := defaultConfig()
+	cfg.Auto.Tmux = "always"
+	a := Args{
+		CWD:         "/p/main",
+		Passthrough: []string{"--tmux", "mywin"},
+	}
+	argv := buildArgv(a, "/shell", cfg)
+	count := 0
+	for _, tok := range argv {
+		if tok == "--tmux" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("--tmux appears %d times in argv, want exactly 1: %v", count, argv)
+	}
+}
+
 // ── Short-flag translation tests ───────────────────────────────────────────
 
 func TestParseArgs_ShortNoValue_Single(t *testing.T) {
