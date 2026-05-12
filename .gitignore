@@ -1,0 +1,15 @@
+# Built binary
+fnclaude
+
+# IDE / editor noise
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# Test output
+*.test
+coverage.out
