@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 )
 
 // Args holds the result of parsing fnclaude's own argv.
@@ -438,30 +437,35 @@ func run() int {
 		launchCWD = filepath.Join(shellCWD, launchCWD)
 	}
 
+	// Auto-name: if the invocation qualifies, generate a session name and
+	// prepend --name <name> to the passthrough slice before buildArgv runs.
+	if shouldAutoName(a.Passthrough) {
+		prompt := extractPrompt(a.Passthrough)
+		apiKey := os.Getenv("ANTHROPIC_API_KEY")
+		name := generateName(prompt, cfg.Name, apiKey, nil, os.Stderr)
+		a.Passthrough = append([]string{"--name", name}, a.Passthrough...)
+	}
+
 	argv := buildArgv(a, shellCWD, cfg)
 
-	claudeBin, err := exec.LookPath("claude")
-	if err != nil {
+	// Verify claude is on PATH before starting the PTY (gives a clean error).
+	if _, err := exec.LookPath("claude"); err != nil {
 		fmt.Fprintf(os.Stderr, "fnclaude: claude not found in PATH: %v\n", err)
 		return 1
 	}
 
-	cmd := exec.Command(claudeBin, argv[1:]...)
-	cmd.Dir = launchCWD
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	exitCode, tail := runWithPTY(argv, launchCWD)
 
-	if err := cmd.Run(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
-				return status.ExitStatus()
-			}
-		}
-		// Non-exit error (e.g. signal death) — return 1.
-		return 1
+	// Detect the cross-cwd redirect message that claude emits when the user
+	// picks a session from a different directory via the Ctrl+A picker.
+	if dest, uuid, ok := detectCrossCwd(tail); ok {
+		// silentRelaunch replaces the process image via syscall.Exec and
+		// never returns on success.  On failure it logs to stderr.
+		silentRelaunch(os.Args[1:], dest, uuid)
+		// If we get here silentRelaunch failed; propagate claude's exit code.
 	}
-	return 0
+
+	return exitCode
 }
 
 func main() {

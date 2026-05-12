@@ -777,6 +777,91 @@ func TestParseArgs_NoTmux_DoesNotAffectExplicitT(t *testing.T) {
 	assertContains(t, a.Passthrough, "--tmux")
 }
 
+// ── Auto-name wiring tests ─────────────────────────────────────────────────
+// These tests exercise the shouldAutoName + heuristic path end-to-end by
+// simulating what run() does: check shouldAutoName, prepend --name, then call
+// buildArgv.  The LLM is not called (no ANTHROPIC_API_KEY set in tests).
+
+func applyAutoName(a *Args, passthrough []string) {
+	a.Passthrough = passthrough
+	if shouldAutoName(a.Passthrough) {
+		prompt := extractPrompt(a.Passthrough)
+		// Use empty apiKey so we get the heuristic path (no real API call).
+		// Stderr goes to a discard file; we don't test the warning here.
+		name := heuristicName(prompt)
+		a.Passthrough = append([]string{"--name", name}, a.Passthrough...)
+	}
+}
+
+func TestAutoNameWiring_InjectsName(t *testing.T) {
+	a := Args{CWD: "/p/main"}
+	applyAutoName(&a, []string{"--", "fix the login bug"})
+
+	argv := buildArgv(a, "/shell", defaultConfig())
+	// --name should appear in argv.
+	assertContains(t, argv, "--name")
+	assertContains(t, argv, "fix-login-bug")
+}
+
+func TestAutoNameWiring_DoesNotInjectWhenNamePresent(t *testing.T) {
+	a := Args{CWD: "/p/main"}
+	applyAutoName(&a, []string{"--name", "my-session", "--", "fix bug"})
+
+	argv := buildArgv(a, "/shell", defaultConfig())
+	// Count --name occurrences — should be exactly 1 (the user-supplied one).
+	count := 0
+	for _, tok := range argv {
+		if tok == "--name" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("--name appears %d times, want 1: %v", count, argv)
+	}
+}
+
+func TestAutoNameWiring_DoesNotInjectWithResume(t *testing.T) {
+	a := Args{CWD: "/p/main"}
+	applyAutoName(&a, []string{"--resume", "abc123", "--", "fix bug"})
+
+	argv := buildArgv(a, "/shell", defaultConfig())
+	assertNotContains(t, argv, "--name")
+}
+
+func TestAutoNameWiring_DoesNotInjectWithPrint(t *testing.T) {
+	a := Args{CWD: "/p/main"}
+	applyAutoName(&a, []string{"--print", "--", "fix bug"})
+
+	argv := buildArgv(a, "/shell", defaultConfig())
+	assertNotContains(t, argv, "--name")
+}
+
+func TestAutoNameWiring_DoesNotInjectWithoutDashDash(t *testing.T) {
+	a := Args{CWD: "/p/main"}
+	applyAutoName(&a, []string{"--verbose"})
+
+	argv := buildArgv(a, "/shell", defaultConfig())
+	assertNotContains(t, argv, "--name")
+}
+
+func TestAutoNameWiring_NamePrependedBeforeOtherFlags(t *testing.T) {
+	// --name <val> should appear before the user's other passthrough flags.
+	a := Args{CWD: "/p/main"}
+	applyAutoName(&a, []string{"--verbose", "--", "add dark mode"})
+
+	// Find --name position.
+	nameIdx := -1
+	for i, tok := range a.Passthrough {
+		if tok == "--name" {
+			nameIdx = i
+			break
+		}
+	}
+	if nameIdx != 0 {
+		t.Errorf("--name not at start of Passthrough; got %v", a.Passthrough)
+	}
+}
+
 // ── helpers ────────────────────────────────────────────────────────────────
 
 func assertArgv(t *testing.T, got, want []string) {
