@@ -21,8 +21,8 @@ type Config struct {
 // NameConfig holds fields from the [name] TOML section.
 // These are loaded and stored but not yet used for behavior.
 type NameConfig struct {
-	Model            string
-	Timeout          time.Duration
+	Model              string
+	Timeout            time.Duration
 	QuietMissingAPIKey bool
 }
 
@@ -42,8 +42,8 @@ type AutoConfig struct {
 // rawConfig mirrors the TOML file structure for unmarshalling.
 type rawConfig struct {
 	Name struct {
-		Model            string `toml:"model"`
-		Timeout          string `toml:"timeout"`
+		Model              string `toml:"model"`
+		Timeout            string `toml:"timeout"`
 		QuietMissingAPIKey bool   `toml:"quiet_missing_api_key"`
 	} `toml:"name"`
 	Auto struct {

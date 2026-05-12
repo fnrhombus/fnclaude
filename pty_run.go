@@ -17,9 +17,9 @@ import (
 // the capacity discard the oldest data.  Only the most recent cap bytes are
 // kept, which is all we need for post-exit pattern scanning.
 type ringBuffer struct {
-	buf []byte
-	cap int
-	pos int
+	buf  []byte
+	cap  int
+	pos  int
 	full bool
 }
 
