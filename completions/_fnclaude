@@ -1,0 +1,95 @@
+#compdef fnclaude fnc
+
+# Zsh completion for fnclaude (and its fnc alias).
+#
+# Install: copy or symlink this file to a directory in $fpath, then run
+# `compinit` (or restart your shell).  The function name _fnclaude is
+# registered for both `fnclaude` and `fnc` via the #compdef line above.
+
+_fnclaude() {
+    local curcontext="$curcontext" state line
+    typeset -A opt_args
+
+    # Magic positional words are position-sensitive:
+    #   position 1: model alias (opus / sonnet / haiku)
+    #   position 2: effort level (only when position 1 was a model alias)
+    # After the magic slots, remaining positionals are directory paths.
+    #
+    # This completion offers model aliases and effort levels as the first
+    # two positionals and dir-completion thereafter; it does not enforce
+    # the runtime constraint that effort is only valid after a model alias
+    # (that would require inspecting already-typed words, which is doable
+    # but adds complexity for marginal benefit).
+
+    local -a model_aliases effort_levels permission_modes
+
+    model_aliases=(
+        'opus:use claude-opus model'
+        'sonnet:use claude-sonnet model'
+        'haiku:use claude-haiku model'
+    )
+
+    effort_levels=(
+        'low:low effort'
+        'medium:medium effort'
+        'high:high effort'
+        'xhigh:extra-high effort'
+        'max:maximum effort'
+    )
+
+    permission_modes=(
+        'acceptEdits:accept file edits automatically'
+        'auto:automatic permission handling'
+        'bypassPermissions:bypass all permission checks'
+        'default:default permission handling'
+        'dontAsk:never ask for permission'
+        'plan:plan mode (read-only)'
+    )
+
+    _arguments -C \
+        '(-A --also)'{-A,--also}'[add an extra directory]:extra directory:_files -/' \
+        '--no-tmux[disable tmux integration]' \
+        '--no-permissions[disable auto dangerously-skip-permissions injection]' \
+        '(-B --brief)'{-B,--brief}'[brief output mode]' \
+        '(-C --chrome)'{-C,--chrome}'[open in Chrome]' \
+        '(-D --dangerously-skip-permissions)'{-D,--dangerously-skip-permissions}'[skip all permission prompts]' \
+        '(-F --fork-session)'{-F,--fork-session}'[fork the current session]' \
+        '(-G --agent)'{-G,--agent}'[run a named agent]:agent name' \
+        '(-I --ide)'{-I,--ide}'[enable IDE integration]' \
+        '(-M --permission-mode)'{-M,--permission-mode}'[set permission mode]:mode:('"${(j: :)permission_modes[@]%%:*}"')' \
+        '(-P --from-pr)'{-P,--from-pr}'[start from a PR]::PR number or URL' \
+        '(-R --remote-control)'{-R,--remote-control}'[enable remote control]::control name' \
+        '(-T --tmux)'{-T,--tmux}'[set tmux mode]::tmux variant:(classic)' \
+        '(-V --verbose)'{-V,--verbose}'[verbose output]' \
+        '(-W --allowedTools)'{-W,--allowedTools}'[restrict allowed tools]:tool spec' \
+        \
+        # -w / --worktree is a claude passthrough flag.
+        # TODO(worktree-completion): replace this plain passthrough with smart
+        # completion that enumerates `git worktree list` names.  Extract into a
+        # separate helper function _fnclaude_worktree_names so it can be
+        # swapped in without touching the rest of _arguments.
+        '--worktree[use git worktree (claude flag)]::worktree name' \
+        \
+        '1: :->pos1' \
+        '2: :->pos2' \
+        '*: :_files -/' \
+        && return 0
+
+    case "$state" in
+        pos1)
+            # First positional: model alias or a directory path.
+            _alternative \
+                'models:model alias:_describe "model alias" model_aliases' \
+                'dirs:directory:_files -/'
+            ;;
+        pos2)
+            # Second positional: effort level (if pos1 was a model alias) or a
+            # directory path.  We optimistically offer both.
+            _alternative \
+                'efforts:effort level:_describe "effort level" effort_levels' \
+                'dirs:directory:_files -/'
+            ;;
+    esac
+}
+
+_fnclaude "$@"
