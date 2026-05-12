@@ -161,8 +161,12 @@ func TestParseArgs_PassthroughOrdering(t *testing.T) {
 }
 
 // ── Magic positional tests ─────────────────────────────────────────────────
+// Magic rule: position 1 may be a model alias; position 2 (only if pos 1
+// matched a model) may be an effort level. Effort alone in position 1 is not
+// magic — it becomes the cwd.
 
-func TestParseArgs_MagicModel_BeforePath(t *testing.T) {
+func TestParseArgs_Magic_ModelThenPath(t *testing.T) {
+	// fnc opus ~/p → --model opus, cwd=~/p
 	a, err := parseArgs([]string{"opus", "/proj/p"}, testHome)
 	if err != nil {
 		t.Fatal(err)
@@ -175,20 +179,8 @@ func TestParseArgs_MagicModel_BeforePath(t *testing.T) {
 	}
 }
 
-func TestParseArgs_MagicEffort_BeforePath(t *testing.T) {
-	a, err := parseArgs([]string{"max", "/proj/p"}, testHome)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if a.CWD != "/proj/p" {
-		t.Errorf("CWD: got %q", a.CWD)
-	}
-	if len(a.Passthrough) != 2 || a.Passthrough[0] != "--effort" || a.Passthrough[1] != "max" {
-		t.Errorf("Passthrough: got %v, want [--effort max]", a.Passthrough)
-	}
-}
-
-func TestParseArgs_MagicModelAndEffort(t *testing.T) {
+func TestParseArgs_Magic_ModelEffortPath(t *testing.T) {
+	// fnc opus max ~/p → --model opus --effort max, cwd=~/p
 	a, err := parseArgs([]string{"opus", "max", "/proj/p"}, testHome)
 	if err != nil {
 		t.Fatal(err)
@@ -196,7 +188,6 @@ func TestParseArgs_MagicModelAndEffort(t *testing.T) {
 	if a.CWD != "/proj/p" {
 		t.Errorf("CWD: got %q", a.CWD)
 	}
-	// --model opus --effort max must be first in passthrough
 	want := []string{"--model", "opus", "--effort", "max"}
 	if len(a.Passthrough) != len(want) {
 		t.Fatalf("Passthrough: got %v, want %v", a.Passthrough, want)
@@ -208,18 +199,66 @@ func TestParseArgs_MagicModelAndEffort(t *testing.T) {
 	}
 }
 
-func TestParseArgs_MagicModel_LastWins(t *testing.T) {
+func TestParseArgs_Magic_EffortAloneIsPath(t *testing.T) {
+	// fnc max ~/p → cwd='max', extra dir=~/p (effort alone is not magic)
+	a, err := parseArgs([]string{"max", "/proj/p"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.CWD != "max" {
+		t.Errorf("CWD: got %q, want 'max'", a.CWD)
+	}
+	if len(a.ExtraDirs) != 1 || a.ExtraDirs[0] != "/proj/p" {
+		t.Errorf("ExtraDirs: got %v, want [/proj/p]", a.ExtraDirs)
+	}
+	if len(a.Passthrough) != 0 {
+		t.Errorf("Passthrough: got %v, want empty", a.Passthrough)
+	}
+}
+
+func TestParseArgs_Magic_ModelThenNonEffortBecomesPath(t *testing.T) {
+	// fnc opus sonnet ~/p → --model opus, cwd='sonnet', extra dir=~/p
+	// (pos 2 'sonnet' is not an effort level → becomes cwd)
 	a, err := parseArgs([]string{"opus", "sonnet", "/proj/p"}, testHome)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// sonnet wins over opus
-	if len(a.Passthrough) != 2 || a.Passthrough[0] != "--model" || a.Passthrough[1] != "sonnet" {
-		t.Errorf("Passthrough: got %v, want [--model sonnet]", a.Passthrough)
+	if len(a.Passthrough) != 2 || a.Passthrough[0] != "--model" || a.Passthrough[1] != "opus" {
+		t.Errorf("Passthrough: got %v, want [--model opus]", a.Passthrough)
+	}
+	if a.CWD != "sonnet" {
+		t.Errorf("CWD: got %q, want 'sonnet'", a.CWD)
+	}
+	if len(a.ExtraDirs) != 1 || a.ExtraDirs[0] != "/proj/p" {
+		t.Errorf("ExtraDirs: got %v, want [/proj/p]", a.ExtraDirs)
 	}
 }
 
-func TestParseArgs_MagicOnly_NoPath_FallsBackToNoop(t *testing.T) {
+func TestParseArgs_Magic_ModelEffortThenExtraDirs(t *testing.T) {
+	// fnc opus max sonnet ~/p → --model opus --effort max, cwd='sonnet', extra dir=~/p
+	a, err := parseArgs([]string{"opus", "max", "sonnet", "/proj/p"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"--model", "opus", "--effort", "max"}
+	if len(a.Passthrough) != len(want) {
+		t.Fatalf("Passthrough: got %v, want %v", a.Passthrough, want)
+	}
+	for i, w := range want {
+		if a.Passthrough[i] != w {
+			t.Errorf("Passthrough[%d]: got %q, want %q", i, a.Passthrough[i], w)
+		}
+	}
+	if a.CWD != "sonnet" {
+		t.Errorf("CWD: got %q, want 'sonnet'", a.CWD)
+	}
+	if len(a.ExtraDirs) != 1 || a.ExtraDirs[0] != "/proj/p" {
+		t.Errorf("ExtraDirs: got %v, want [/proj/p]", a.ExtraDirs)
+	}
+}
+
+func TestParseArgs_Magic_ModelOnly_NoPath_FallsBackToNoop(t *testing.T) {
+	// fnc opus → --model opus, cwd=~/.claude/noop
 	a, err := parseArgs([]string{"opus"}, testHome)
 	if err != nil {
 		t.Fatal(err)
@@ -232,9 +271,28 @@ func TestParseArgs_MagicOnly_NoPath_FallsBackToNoop(t *testing.T) {
 	}
 }
 
-func TestParseArgs_MagicOff_AfterFirstPath(t *testing.T) {
-	// magic is disabled after the first non-magic positional; "sonnet" here is
-	// treated as an extra dir, not a model alias.
+func TestParseArgs_Magic_ModelAndEffort_NoPath_FallsBackToNoop(t *testing.T) {
+	// fnc opus max → --model opus --effort max, cwd=~/.claude/noop
+	a, err := parseArgs([]string{"opus", "max"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.CWD != noopDir {
+		t.Errorf("CWD: got %q, want %q", a.CWD, noopDir)
+	}
+	want := []string{"--model", "opus", "--effort", "max"}
+	if len(a.Passthrough) != len(want) {
+		t.Fatalf("Passthrough: got %v, want %v", a.Passthrough, want)
+	}
+	for i, w := range want {
+		if a.Passthrough[i] != w {
+			t.Errorf("Passthrough[%d]: got %q, want %q", i, a.Passthrough[i], w)
+		}
+	}
+}
+
+func TestParseArgs_Magic_NonModelFirstTurnsOffMagic(t *testing.T) {
+	// fnc /proj sonnet → cwd=/proj, extra dir=sonnet (magic off after pos 1 non-match)
 	a, err := parseArgs([]string{"/proj/p", "sonnet"}, testHome)
 	if err != nil {
 		t.Fatal(err)

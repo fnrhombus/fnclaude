@@ -41,18 +41,32 @@ var effortLevels = map[string]bool{
 
 // parseArgs parses os.Args[1:] and returns the structured result.
 // home is the value to use for the noop fallback (typically os.UserHomeDir()).
+//
+// Magic positional rules (strictly positional, not last-wins):
+//   - Position 1: if it exactly matches a model alias → --model <alias>, continue
+//     to position 2. Otherwise → position 1 is the cwd, magic off.
+//   - Position 2 (only when position 1 was a model alias): if it exactly matches
+//     an effort level → --effort <level>, magic off. Otherwise → position 2 is
+//     the cwd, magic off.
+//   - Position 3+: never magic; normal positional parsing (extra dirs).
+//
+// Effort without a preceding model alias is NOT magic — it becomes the cwd.
 func parseArgs(argv []string, home string) (Args, error) {
 	var firstPath string
 	var extraDirs []string
 	var passthrough []string
 
-	// Magic model/effort tokens discovered before the first path positional.
-	// Last-wins: later token overwrites earlier.
+	// Magic slots: filled at most once each, in strict order.
 	magicModel := ""
 	magicEffort := ""
 
-	inFlags := false   // once true, non-flag tokens go to passthrough
-	magicDone := false // once true, no more magic scanning (first path seen)
+	// magicState tracks where we are in the magic scanning sequence.
+	//   0 = position 1 (check model)
+	//   1 = position 2 (check effort, only if model matched)
+	//   2 = magic done
+	magicState := 0
+
+	inFlags := false // once true, non-flag tokens go to passthrough
 	firstPathSet := false
 
 	i := 0
@@ -61,21 +75,28 @@ func parseArgs(argv []string, home string) (Args, error) {
 
 		// ── Positional collection (before first flag-shaped token) ───────────
 		if !inFlags && !strings.HasPrefix(arg, "-") {
-			// While magic scanning is active, check for model/effort aliases.
-			if !magicDone {
+			// Magic scanning at position 1: model alias check.
+			if magicState == 0 {
 				if modelAliases[arg] {
 					magicModel = arg
+					magicState = 1 // advance to effort check at position 2
 					i++
 					continue
 				}
+				// Not a model alias — position 1 is the cwd; magic done.
+				magicState = 2
+			} else if magicState == 1 {
+				// Magic scanning at position 2: effort level check (model matched).
 				if effortLevels[arg] {
 					magicEffort = arg
+					magicState = 2 // magic done after position 2
 					i++
 					continue
 				}
-				// Not a magic word — this is the cwd; disable magic.
-				magicDone = true
+				// Not an effort level — position 2 is the cwd; magic done.
+				magicState = 2
 			}
+			// magicState == 2: normal positional.
 
 			if !firstPathSet {
 				firstPath = arg
@@ -128,8 +149,7 @@ func parseArgs(argv []string, home string) (Args, error) {
 		i++
 	}
 
-	// Prepend --model / --effort tokens from magic positionals (last-wins
-	// means the magic vars already hold the correct final value).
+	// Prepend --model / --effort tokens from magic positionals.
 	var magicPrefix []string
 	if magicModel != "" {
 		magicPrefix = append(magicPrefix, "--model", magicModel)
