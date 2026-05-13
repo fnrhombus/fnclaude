@@ -308,6 +308,138 @@ func TestLoadConfig_EnvIDE(t *testing.T) {
 	}
 }
 
+// ── exec.env tests ────────────────────────────────────────────────────────
+
+func TestDefaultConfig_ExecEnvEmpty(t *testing.T) {
+	cfg := defaultConfig()
+	if len(cfg.Exec.Env) != 0 {
+		t.Errorf("Exec.Env: got %v, want empty", cfg.Exec.Env)
+	}
+}
+
+func TestLoadConfig_ExecEnv_Empty(t *testing.T) {
+	// Config file with no [exec.env] section → Exec.Env stays empty.
+	writeConfigFile(t, `
+[name]
+model = "claude-haiku-4-5"
+`)
+	clearConfigEnv(t)
+
+	cfg := loadConfig()
+	if len(cfg.Exec.Env) != 0 {
+		t.Errorf("Exec.Env: got %v, want empty when no [exec.env] section", cfg.Exec.Env)
+	}
+}
+
+func TestLoadConfig_ExecEnv_SingleEntry(t *testing.T) {
+	writeConfigFile(t, `
+[exec.env]
+FNCLAUDE_INVOCATION = "1"
+`)
+	clearConfigEnv(t)
+
+	cfg := loadConfig()
+	if got := cfg.Exec.Env["FNCLAUDE_INVOCATION"]; got != "1" {
+		t.Errorf(`Exec.Env["FNCLAUDE_INVOCATION"]: got %q, want "1"`, got)
+	}
+	if len(cfg.Exec.Env) != 1 {
+		t.Errorf("Exec.Env: got %d entries, want 1: %v", len(cfg.Exec.Env), cfg.Exec.Env)
+	}
+}
+
+func TestLoadConfig_ExecEnv_MultipleEntries(t *testing.T) {
+	writeConfigFile(t, `
+[exec.env]
+FNCLAUDE_INVOCATION = "1"
+SOME_DOWNSTREAM_FLAG = "true"
+EMPTY_VAL = ""
+`)
+	clearConfigEnv(t)
+
+	cfg := loadConfig()
+	want := map[string]string{
+		"FNCLAUDE_INVOCATION":  "1",
+		"SOME_DOWNSTREAM_FLAG": "true",
+		"EMPTY_VAL":            "",
+	}
+	if len(cfg.Exec.Env) != len(want) {
+		t.Fatalf("Exec.Env: got %d entries, want %d: %v", len(cfg.Exec.Env), len(want), cfg.Exec.Env)
+	}
+	for k, v := range want {
+		if got, ok := cfg.Exec.Env[k]; !ok || got != v {
+			t.Errorf("Exec.Env[%q]: got %q (present=%v), want %q", k, got, ok, v)
+		}
+	}
+}
+
+// ── envFromConfig tests ────────────────────────────────────────────────────
+
+func TestEnvFromConfig_Empty(t *testing.T) {
+	cfg := Config{}
+	got := envFromConfig(cfg)
+	if len(got) != 0 {
+		t.Errorf("envFromConfig(empty): got %v, want empty slice", got)
+	}
+}
+
+func TestEnvFromConfig_SingleEntry(t *testing.T) {
+	cfg := Config{Exec: ExecConfig{Env: map[string]string{"FOO": "bar"}}}
+	got := envFromConfig(cfg)
+	if len(got) != 1 || got[0] != "FOO=bar" {
+		t.Errorf(`envFromConfig: got %v, want ["FOO=bar"]`, got)
+	}
+}
+
+func TestEnvFromConfig_MultipleEntries_Sorted(t *testing.T) {
+	cfg := Config{Exec: ExecConfig{Env: map[string]string{
+		"ZED":   "last",
+		"ALPHA": "first",
+		"MIDDY": "middle",
+	}}}
+	got := envFromConfig(cfg)
+	want := []string{"ALPHA=first", "MIDDY=middle", "ZED=last"}
+	if len(got) != len(want) {
+		t.Fatalf("envFromConfig: got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("envFromConfig[%d]: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestEnvFromConfig_EmptyValuePreserved(t *testing.T) {
+	cfg := Config{Exec: ExecConfig{Env: map[string]string{"EMPTY": ""}}}
+	got := envFromConfig(cfg)
+	if len(got) != 1 || got[0] != "EMPTY=" {
+		t.Errorf(`envFromConfig: got %v, want ["EMPTY="]`, got)
+	}
+}
+
+// TestEnvFromConfig_OverridesOSEnviron documents the precedence rule:
+// config-supplied env vars are appended AFTER os.Environ(), so by Go's
+// exec.Command last-wins rule, the configured value beats the inherited one.
+func TestEnvFromConfig_OverridesOSEnviron(t *testing.T) {
+	// Simulate what runWithPTY does: append(os.Environ(), envFromConfig(cfg)...).
+	osEnv := []string{"PATH=/usr/bin", "FNCLAUDE_INVOCATION=inherited"}
+	cfg := Config{Exec: ExecConfig{Env: map[string]string{
+		"FNCLAUDE_INVOCATION": "configured",
+	}}}
+	merged := append(osEnv, envFromConfig(cfg)...)
+
+	// Find the last occurrence of FNCLAUDE_INVOCATION — that's the one
+	// Go's exec.Command will hand to the child process.
+	var last string
+	for _, e := range merged {
+		if strings.HasPrefix(e, "FNCLAUDE_INVOCATION=") {
+			last = e
+		}
+	}
+	if last != "FNCLAUDE_INVOCATION=configured" {
+		t.Errorf("last-wins: got %q, want %q", last, "FNCLAUDE_INVOCATION=configured")
+	}
+}
+
 // ── normalizeTmuxMode tests ───────────────────────────────────────────────
 
 func TestNormalizeTmuxMode(t *testing.T) {

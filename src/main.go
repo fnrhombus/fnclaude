@@ -528,6 +528,7 @@ Requires ANTHROPIC_API_KEY; warns if missing.
 
 Config file:
   $XDG_CONFIG_HOME/fnclaude/config.toml (or ~/.config/fnclaude/config.toml)
+  [exec.env] NAME = "value" entries are injected into claude's environment.
 
 Environment variables (override config; precedence: CLI > env > config > default):
   ANTHROPIC_API_KEY                       auth for auto-name LLM call
@@ -877,7 +878,7 @@ func run() int {
 		return 1
 	}
 
-	exitCode, tail := runWithPTY(argv, launchCWD)
+	exitCode, tail := runWithPTY(argv, launchCWD, cfg)
 
 	// Detect the cross-cwd redirect message that claude emits when the user
 	// picks a session from a different directory via the Ctrl+A picker.

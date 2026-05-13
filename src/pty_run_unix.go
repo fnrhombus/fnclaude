@@ -21,8 +21,12 @@ import (
 //   - forwards SIGWINCH → PTY master (terminal resize),
 //   - returns the child's exit code and the ring buffer contents after exit.
 //
+// cfg supplies any [exec.env] entries to inject into the claude child's
+// environment (appended after os.Environ(), so configured keys override
+// inherited ones by Go's exec.Command last-wins rule).
+//
 // The ring buffer is used by the caller to check for the cross-cwd pattern.
-func runWithPTY(claudeArgv []string, launchCWD string) (exitCode int, tail []byte) {
+func runWithPTY(claudeArgv []string, launchCWD string, cfg Config) (exitCode int, tail []byte) {
 	claudeBin, err := exec.LookPath("claude")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fnclaude: claude not found in PATH: %v\n", err)
@@ -31,7 +35,7 @@ func runWithPTY(claudeArgv []string, launchCWD string) (exitCode int, tail []byt
 
 	cmd := exec.Command(claudeBin, claudeArgv[1:]...)
 	cmd.Dir = launchCWD
-	cmd.Env = os.Environ()
+	cmd.Env = append(os.Environ(), envFromConfig(cfg)...)
 
 	// Start the command under a PTY.
 	ptmx, err := pty.Start(cmd)
@@ -110,6 +114,12 @@ func silentRelaunch(origArgs []string, dest, uuid string) {
 
 	clearScreen()
 
+	// NOTE: os.Environ() here is deliberate — this exec replaces the current
+	// process image with a fresh fnclaude (not claude), and the relaunched
+	// fnclaude will reload its own config and re-apply [exec.env] before
+	// starting its claude child. Don't "fix" this to envFromConfig/cfg —
+	// merging config env in at this layer would double-inject those vars
+	// into the relaunched fnclaude's own environment.
 	if err := syscall.Exec(self, argv, os.Environ()); err != nil {
 		fmt.Fprintf(os.Stderr, "fnclaude: exec relaunch failed: %v\n", err)
 	}

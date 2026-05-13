@@ -15,7 +15,11 @@ import (
 // This is intentional: Windows console plumbing (ConPTY etc.) is its own
 // project and not on the v1 roadmap. fnclaude still launches and exits
 // correctly; only the silent-relaunch feature is unavailable.
-func runWithPTY(claudeArgv []string, launchCWD string) (exitCode int, tail []byte) {
+//
+// cfg supplies any [exec.env] entries to inject into the claude child's
+// environment (appended after os.Environ(), so configured keys override
+// inherited ones by Go's exec.Command last-wins rule).
+func runWithPTY(claudeArgv []string, launchCWD string, cfg Config) (exitCode int, tail []byte) {
 	claudeBin, err := exec.LookPath("claude")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fnclaude: claude not found in PATH: %v\n", err)
@@ -24,7 +28,7 @@ func runWithPTY(claudeArgv []string, launchCWD string) (exitCode int, tail []byt
 
 	cmd := exec.Command(claudeBin, claudeArgv[1:]...)
 	cmd.Dir = launchCWD
-	cmd.Env = os.Environ()
+	cmd.Env = append(os.Environ(), envFromConfig(cfg)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
