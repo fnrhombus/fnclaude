@@ -1,0 +1,225 @@
+Script started on 2026-05-13 14:40:21-04:00 [COMMAND="claude --resume" TERM="xterm-ghostty" TTY="/dev/pts/1" COLUMNS="118" LINES="60"]
+7[r8[?25h[?25l[?2004h[?1004h[?2031h[<u[>1u[>4;2m]0;claude · resume[?2026h[38;2;255;255;255m·[2C[39mLoading[1Cconversations…
+[?2026l]11;?[c[>0q[c[?2026h[1A[38;2;255;255;255m✳[39m
+[?2026l[?2026$p[c[?2026h[1A[38;2;255;255;255m✶[39m
+[?2026l[?2026h[1A[K
+[38;2;177;185;249m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[2C[38;2;177;185;249m[1mResume[1Csession[22m[39m
+[2C[2m╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[22m
+[2C[2m│[1C[22m[38;2;153;153;153m⌕[1CSearch…[102C[39m[2m│[22m
+[2C[2m╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[22m
+
+
+[2C[38;2;177;185;249m❯[1CReset[1Cnwg-display[1Csettings[1Cto[1Cdefault[39m
+[4C[38;2;153;153;153m1[1Cweek[1Cago[1C·[1CHEAD[1C·[1C96KB[39m
+
+[4CConfigure[1Csuper+alt[1Cbindings[1Cfor[1Cworkspace[1Cswitching
+[4C[38;2;153;153;153m1[1Cweek[1Cago[1C·[1CHEAD[1C·[1C441.1KB[39m
+
+[4CHyprland[1Cscratch[1Cworkspace[1Cexplanation
+[4C[38;2;153;153;153m1[1Cweek[1Cago[1C·[1CHEAD[1C·[1C36.7KB[39m
+
+[4CExplain[1Cscratchpad[1Cworkspace[1Cfeature
+[4C[38;2;153;153;153m1[1Cweek[1Cago[1C·[1CHEAD[1C·[1C17.1KB[39m
+
+[4CCreate[1Cecho[1Ccommand[1Cto[1Csay[1Chi
+[4C[38;2;153;153;153m1[1Cweek[1Cago[1C·[1CHEAD[1C·[1C23.2KB[39m
+
+[4CCheck[1Ccurrent[1Cdisplay[1Cscaling[1Csettings
+[4C[38;2;153;153;153m1[1Cweek[1Cago[1C·[1CHEAD[1C·[1C1.7MB[39m
+
+[4CEnable[1Cdirectory[1Ctrusted[1Cflag
+[4C[38;2;153;153;153m1[1Cweek[1Cago[1C·[1CHEAD[1C·[1C161.6KB[39m
+
+[4CCheck[1Ccurrent[1Cdisplay[1Cscaling
+[4C[38;2;153;153;153m1[1Cweek[1Cago[1C·[1CHEAD[1C·[1C88.9KB[39m
+
+[4C[38;2;153;153;153mCtrl+A[1Cto[1Cshow[1Call[1Cprojects[1C·[1CSpace[1Cto[1Cpreview[1C·[1CCtrl+R[1Cto[1Crename[1C·[1CType[1Cto[1Csearch[1C·[1CEsc[1Cto[1Ccancel[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[2C[51A[?2026l[?2026h[2D[51B[4C[53A[38;2;153;153;153mtom[34C[26BCtrl+B to only show curren[1C b[1Ca[1Cch · Spac[5Cpreview · Ctrl+R to rename · Type to[4C[1B search · Esc to cancel[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[2C[51A[?2026l[?2026h[2D[51B[16C[57A[38;2;153;153;153m[1m · Refreshing…[4C[4B[22m[39m[K[2C[1B[38;2;177;185;249m❯[1CReset nwg-display settings to default[2C[1B[39m [1C[38;2;153;153;153m1 week ago · HEAD · 96KB · /home/tom[39m[K[4C[1B[K[4C[1BConfigure[1Csuper+alt[1Cbindings[1Cfor[1Cworkspace[1Cswitching[4C[1B[38;2;153;153;153m1 week ago · HEAD · 441.1KB · /home/tom[39m[K[4C[1B[K[4C[1BHyprland[1Cscratch[1Cworkspace[1Cexplanation[4C[1B[38;2;153;153;153m1 week ago · HEAD · 36.7KB · /home/tom[4C[1B[39m[K[4C[1BExplain[1Cscratchpad[1Cworkspace[1Cfeature[4C[1B[38;2;153;153;153m1 week ago · HEAD · 17.1KB · /home/tom[4C[1B[39m[K[4C[1BCreate[1Cecho[1Ccommand[1Cto[1Csay[1Chi[4C[1B[38;2;153;153;153m1 week ago · HEAD · 23.2KB · /home/tom[4C[1B[39m[K[4C[1BCheck[1Ccurrent[1Cdisplay[1Cscaling[1Csettings[4C[1B[38;2;153;153;153m1 week ago · HEAD · 1.7MB · /home/tom[39m[K[4C[1B[K[4C[1BEnable[1Cdirectory[1Ctrusted[1Cflag[4C[1B[38;2;153;153;153m1 week ago · HEAD · 161.6KB · /home/tom[4C[1B[39m[K[4C[1BCheck[1Ccurrent[1Cdisplay[1Cscaling[4C[1B[38;2;153;153;153m1 week ago · HEAD · 88.9KB · /home/tom[4C[1B[39m[K[4C[1B[38;2;153;153;153mCtrl+A to only show current repo · Ctrl+B to only show current branch · Space to preview · Ctrl+R to rename · [4C[1BType to search[1C· Esc to [1Cancel[39m[K[4C[1B[K
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[2C[52A[?2026l[?2026h[2D[52B[17C[57A[38;2;153;153;153m[1m(1 o[1C 50)[22m[39m[K[4C[5B[38;2;177;185;249mfnclaude[39m[K[4C[1B[38;2;153;153;153m32 s[1Cconds[1Cago · main · 4.8MB · [1Ch[2Ce/tom/src/fnclaude@fnrhombus[4C[2B[39mhp-print[1Cr[K[4C[1B[38;2;153;153;153m2[1Cminutes ago · main · 2[1C2.1KB · /home/tom/src/fnclaude@fnrhombus[4C[2B[39mcclaude-features[1C[K[5C[1B[38;2;153;153;153m7 minutes[1Cago · HEAD · 1.8MB · /home/tom/.claude/noop[4C[2B[39msu[1Cer+alt+left/right[K[5C[1B[38;2;153;153;153m9 hours ago[1C· HEAD[1C· 201.5KB · /home/tom/.claude/noop[4C[2B[39mfnc-wip[K[5C[1B[38;2;153;153;153m9 hours ago[1C· main[1C· 742.7KB · fnrh[2Cbus/fnclaude#2 · /home/tom/src/fnclaude@fnrhombus/.claude/worktrees/wip[4C[2B[39mworktree-plugin[K[5C[1B[38;2;153;153;153m9 hours ago[1C· feat/templated-config · 965.5KB · fnrhombus/claude-code-worktree-paths#1 · [4C[1B/home/tom/src/claude-code-worktree-paths@fnrhombus[4C[1B[39m[K[4C[1Bbtop-lockscreen[K[4C[1B[38;2;153;153;153m21 hours ago · main · 6.4MB · /home/tom/src/arch-setup@fnrhombus[4C[1B[39m[K[4C[1Bde-style-updates[K[4C[1B[38;2;153;153;153m22 hours ago · HEAD · 103KB · /home/tom/.claude/noop[4C[1B[39m[K[4C[1BInstall qbittorrent[K[4C[1B[38;2;153;153;153m1 day ago · HEAD · 145.2KB · /home/tom/.claude/noop[4C[2B[39mInstall[1Cqbittorrent[4C[1B[38;2;153;153;153m1 day ago · HEAD · 14.2KB · /home/tom/.claude/noop[4C[2B[39mscale-waypills[4C[1B[38;2;153;153;153m1 day ago · main · 424.9KB · /home/tom/src/arch-setup@fnrhombus[4C[2B[39m--brief[4C[1B[38;2;153;153;153m1 day ago · HEAD · 48.2KB · /home/tom/.claude/noop[4C[2B[39mzsh-line-toggles[4C[1B[38;2;153;153;153m1 day ago · HEAD · 2.8MB · /home/tom/.claude/noop[4C[2B[39mwaybar-rotate-blink-coalesce[4C[1B[38;2;153;153;153m1 day ago · main · 853KB · /home/tom/src/dots@rhombu5[4C[2B[39mrandom-waybar-blink[4C[1B[38;2;153;153;153m1 day ago · HEAD · 207.8KB · /home/tom/.claude/noop[2C[2B↓[1C[39mConfigure[1CClaude[1CSonnet[1Cmodel[4C[1B[38;2;153;153;153m1 day ago · HEAD · 7.2KB · /home/tom/.claude/noop[4C[2BCtrl+A to only show current repo · Ctrl+B to only show current branch · Space to preview · Ctrl+R to rename · [4C[1BType to search · Esc to cancel[39m
+
+[2C[52A[?2026l[?2026h[2D[52B[2C[52A [1Cfnclaude[2C[3B[38;2;177;185;249m❯[1Chp-printer[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[2C[49A[?2026l[?2026h[2D[49B[18C[57A[38;2;153;153;153m[1m2[22m[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[2C[49A[?2026l]52;c;Y2QgL2hvbWUvdG9tL3NyYy9mbmNsYXVkZUBmbnJob21idXMgJiYgY2xhdWRlIC0tcmVzdW1lIDIyZDRiNTNmLTI2NWYtNDQ1NS05ZTg1LTJlMWFmZWQ2MjQ0Yg==[?2026h[2D[49B[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[1A[2K[G[1A[6AThis[1Cconversation[1Cis[1Cfrom[1Ca[1Cdifferent[1Cdirectory.[1B[K[1BTo resume, run:[K[1C[1Bcd /home/tom/src/fnclaude@fnrhombus && claude --resume 22d4b53f-265f-4455-9e85-2e1afed6244b[K[2C[1B[K[1B[38;2;153;153;153m(Command copied to clipboard)[39m[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[1B[K[52A[?2026l[?2026h[?25h[?2026l[?1006l[?1003l[?1002l[?1000l[>4m[<u[?1004l[?2031l[?2004l[?25h7[r8]9;4;0;[?25h[>4m[<u[?1004l[?2031l[?2004l
+Script done on 2026-05-13 14:40:34-04:00 [COMMAND_EXIT_CODE="0"]

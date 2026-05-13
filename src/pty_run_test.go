@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"os"
 	"testing"
 )
 
@@ -47,6 +49,69 @@ func TestCrossCwdRe_PartialMessage_NoMatch(t *testing.T) {
 	_, _, ok := detectCrossCwd([]byte(partial))
 	if ok {
 		t.Error("detectCrossCwd: expected no match for partial message, got one")
+	}
+}
+
+// TestCrossCwdRe_RealCapture exercises the regex against an actual captured
+// PTY stream from a real `claude --resume` → Ctrl-A → cross-cwd-pick session,
+// recorded via `script(1)`. The fixture lives at testdata/cross-cwd-tty-capture.bin
+// and includes the script(1) header line followed by the raw bytes claude
+// emitted, ANSI escapes and all.
+//
+// This is the strongest regression test we have — if claude ever changes its
+// TUI rendering of the cross-cwd message in a way that breaks the regex,
+// this fixture-driven test catches it the moment the fixture is refreshed.
+func TestCrossCwdRe_RealCapture(t *testing.T) {
+	raw, err := os.ReadFile("testdata/cross-cwd-tty-capture.bin")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	// Strip the script(1) header line ("Script started on ...") and the
+	// trailing "Script done on ..." footer — they're added by script, not by
+	// claude, and shouldn't bias the regex match.
+	if i := bytes.IndexByte(raw, '\n'); i >= 0 {
+		raw = raw[i+1:]
+	}
+	if i := bytes.LastIndex(raw, []byte("\nScript done on ")); i >= 0 {
+		raw = raw[:i]
+	}
+
+	dest, uuid, ok := detectCrossCwd(raw)
+	if !ok {
+		t.Fatal("detectCrossCwd: expected match on real PTY capture")
+	}
+	// Values come from the captured session; if you re-record the fixture,
+	// update these expectations to match.
+	if dest != "/home/tom/src/fnclaude@fnrhombus" {
+		t.Errorf("dest: got %q", dest)
+	}
+	if uuid != "22d4b53f-265f-4455-9e85-2e1afed6244b" {
+		t.Errorf("uuid: got %q", uuid)
+	}
+}
+
+// Real-world capture: claude's TUI renders the "different directory" preamble
+// using cursor-right escapes between words (e.g. `\x1b[1C`) instead of spaces,
+// so the preamble text is never plain ASCII in the PTY stream. The cd-and-resume
+// line, by contrast, is rendered as plain ASCII. The regex anchors on what
+// actually survives. This synthetic test stays as defense-in-depth alongside
+// the fixture-driven TestCrossCwdRe_RealCapture above.
+func TestCrossCwdRe_TUIWithCursorEscapesBetweenWords(t *testing.T) {
+	// Faithful reproduction of a real captured ring tail. The preamble has
+	// `\x1b[1C` instead of spaces; the cd line is plain ASCII; between them
+	// there is `\x1b[K\r\x1b[1C\x1b[1B` line-erase/CR/cursor-move goo.
+	const tuiCapture = "This\x1b[1Cconversation\x1b[1Cis\x1b[1Cfrom\x1b[1Ca\x1b[1Cdifferent\x1b[1Cdirectory.\r\x1b[1B\x1b[K\rTo resume, run:\x1b[K\r\x1b[1C\x1b[1Bcd /home/tom/src/fnclaude@fnrhombus && claude --resume 22d4b53f-265f-4455-9e85-2e1afed6244b\x1b[K"
+
+	dest, uuid, ok := detectCrossCwd([]byte(tuiCapture))
+	if !ok {
+		t.Fatal("detectCrossCwd: expected match on TUI capture")
+	}
+	if dest != "/home/tom/src/fnclaude@fnrhombus" {
+		t.Errorf("dest: got %q", dest)
+	}
+	if uuid != "22d4b53f-265f-4455-9e85-2e1afed6244b" {
+		t.Errorf("uuid: got %q", uuid)
 	}
 }
 
