@@ -1,0 +1,18 @@
+#!/bin/sh
+# fnclaude pre-commit hook: refuse to commit unformatted Go sources.
+#
+# Activated by either:
+#   git config core.hooksPath .githooks
+# or, equivalently:
+#   mise run setup
+
+set -e
+
+unformatted=$(gofmt -l ./src 2>/dev/null || true)
+if [ -n "$unformatted" ]; then
+    echo "gofmt: the following files are not formatted:" >&2
+    echo "$unformatted" >&2
+    echo >&2
+    echo "Run 'gofmt -w ./src' to fix, then re-stage and re-commit." >&2
+    exit 1
+fi
