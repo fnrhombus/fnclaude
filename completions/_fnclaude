@@ -32,15 +32,19 @@ _fnclaude() {
     # Magic positional words are position-sensitive:
     #   position 1: model alias (opus / sonnet / haiku)
     #   position 2: effort level (only when position 1 was a model alias)
-    # After the magic slots, remaining positionals are directory paths.
+    # After the magic slots, the remaining positionals are:
+    #   1st remaining → cwd (directory)
+    #   2nd remaining → worktree name (same as -w)
+    #   3rd+ remaining → error at runtime; no offer.
     #
-    # This completion offers model aliases and effort levels as the first
-    # two positionals and dir-completion thereafter; it does not enforce
-    # the runtime constraint that effort is only valid after a model alias
-    # (that would require inspecting already-typed words, which is doable
-    # but adds complexity for marginal benefit).
+    # Subcommand-style positionals (resume / res / continue / con) may appear
+    # at any positional slot without consuming the remaining-slot count.
+    #
+    # This completion uses static slot numbers (1, 2, 3, 4) so it doesn't
+    # walk argv to compute "effective remaining slot" — it just offers a
+    # broad superset at each typed-word index and lets the user pick.
 
-    local -a model_aliases effort_levels permission_modes
+    local -a model_aliases effort_levels permission_modes subcommand_tokens
 
     model_aliases=(
         'opus:use claude-opus model'
@@ -54,6 +58,13 @@ _fnclaude() {
         'high:high effort'
         'xhigh:extra-high effort'
         'max:maximum effort'
+    )
+
+    subcommand_tokens=(
+        'resume:show session picker (--resume)'
+        'res:show session picker (--resume)'
+        'continue:resume most recent session (--continue)'
+        'con:resume most recent session (--continue)'
     )
 
     permission_modes=(
@@ -85,22 +96,42 @@ _fnclaude() {
         \
         '1: :->pos1' \
         '2: :->pos2' \
-        '*: :_files -/' \
+        '3: :->pos3' \
+        '4: :->pos4' \
         && return 0
 
     case "$state" in
         pos1)
-            # First positional: model alias or a directory path.
+            # First positional: model alias, subcommand, or directory.
             _alternative \
                 'models:model alias:_describe "model alias" model_aliases' \
+                'subcommands:subcommand:_describe "subcommand" subcommand_tokens' \
                 'dirs:directory:_files -/'
             ;;
         pos2)
-            # Second positional: effort level (if pos1 was a model alias) or a
-            # directory path.  We optimistically offer both.
+            # Second positional: effort level (if pos1 was a model alias),
+            # subcommand, worktree name (if pos1 was the cwd), or directory.
+            # We optimistically offer the union.
             _alternative \
                 'efforts:effort level:_describe "effort level" effort_levels' \
+                'subcommands:subcommand:_describe "subcommand" subcommand_tokens' \
+                'worktrees:worktree name:_fnclaude_worktree_names' \
                 'dirs:directory:_files -/'
+            ;;
+        pos3)
+            # Third positional: cwd (after model+effort), worktree (after
+            # model+cwd), or subcommand. Offer the union.
+            _alternative \
+                'subcommands:subcommand:_describe "subcommand" subcommand_tokens' \
+                'worktrees:worktree name:_fnclaude_worktree_names' \
+                'dirs:directory:_files -/'
+            ;;
+        pos4)
+            # Fourth positional: only valid as the worktree slot when both
+            # magic positionals were eaten. Offer worktree names + subcommand.
+            _alternative \
+                'subcommands:subcommand:_describe "subcommand" subcommand_tokens' \
+                'worktrees:worktree name:_fnclaude_worktree_names'
             ;;
     esac
 }

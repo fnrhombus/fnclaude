@@ -26,6 +26,9 @@ _fnclaude_complete() {
     # Effort levels (magic position 2, only when position 1 was a model alias).
     local -a effort_levels=(low medium high xhigh max)
 
+    # Subcommand-style positionals (any positional slot, max one per invocation).
+    local -a subcommand_tokens=(resume res continue con)
+
     # --permission-mode / -M enum values.
     local -a permission_modes=(acceptEdits auto bypassPermissions default dontAsk plan)
 
@@ -81,10 +84,16 @@ _fnclaude_complete() {
     fi
 
     # Positional argument logic.
-    # Count positionals seen so far (words that don't start with '-' and aren't
-    # values consumed by a preceding flag).
-    local positional_count=0
-    local first_positional=""
+    # Walk the already-typed words tracking magic-eaten slots (model + effort)
+    # and subcommand-eaten slots, then count remaining post-magic positionals
+    # to decide what the current slot offers.
+    #
+    # Slot rules after magic + subcommand are stripped:
+    #   1st remaining → cwd
+    #   2nd remaining → worktree name (same as -w)
+    #   3rd+ remaining → error at runtime; no completion offered.
+    local magic_state=0          # 0=check model, 1=check effort, 2=magic done
+    local post_magic_positionals=0
     local i
     local skip_next=false
 
@@ -109,31 +118,63 @@ _fnclaude_complete() {
         # Skip flags and their inline =value forms.
         [[ "$w" == -* ]] && continue
 
-        # It's a positional.
-        (( positional_count++ ))
-        if [[ $positional_count -eq 1 ]]; then
-            first_positional="$w"
+        # Subcommand-style positional: eats a slot without affecting magic or
+        # remaining-positional counts (matches parseArgs behaviour).
+        local sc is_subcommand=false
+        for sc in "${subcommand_tokens[@]}"; do
+            [[ "$w" == "$sc" ]] && is_subcommand=true && break
+        done
+        if $is_subcommand; then
+            continue
         fi
+
+        # Magic positional: pos 1 model alias, pos 2 effort level.
+        if [[ $magic_state -eq 0 ]]; then
+            local m matched=false
+            for m in "${model_aliases[@]}"; do
+                [[ "$w" == "$m" ]] && matched=true && break
+            done
+            if $matched; then
+                magic_state=1
+                continue
+            fi
+            magic_state=2
+        elif [[ $magic_state -eq 1 ]]; then
+            local e matched=false
+            for e in "${effort_levels[@]}"; do
+                [[ "$w" == "$e" ]] && matched=true && break
+            done
+            if $matched; then
+                magic_state=2
+                continue
+            fi
+            magic_state=2
+        fi
+
+        # Post-magic positional.
+        (( post_magic_positionals++ ))
     done
 
-    if [[ $positional_count -eq 0 ]]; then
-        # Position 1: model alias or directory.
-        COMPREPLY=( $(compgen -W "${model_aliases[*]}" -- "$cur") )
-        _filedir -d
-    elif [[ $positional_count -eq 1 ]]; then
-        # Position 2: effort level (if pos1 was a model alias) or directory.
-        local is_model=false
-        local m
-        for m in "${model_aliases[@]}"; do
-            [[ "$first_positional" == "$m" ]] && is_model=true && break
-        done
-        if $is_model; then
-            COMPREPLY+=( $(compgen -W "${effort_levels[*]}" -- "$cur") )
+    # Build completion candidates for the current slot.
+    if [[ $post_magic_positionals -eq 0 ]]; then
+        # Could be magic (if not yet consumed), subcommand, or cwd.
+        if [[ $magic_state -eq 0 ]]; then
+            COMPREPLY=( $(compgen -W "${model_aliases[*]} ${subcommand_tokens[*]}" -- "$cur") )
+        elif [[ $magic_state -eq 1 ]]; then
+            COMPREPLY=( $(compgen -W "${effort_levels[*]} ${subcommand_tokens[*]}" -- "$cur") )
+        else
+            COMPREPLY=( $(compgen -W "${subcommand_tokens[*]}" -- "$cur") )
         fi
         _filedir -d
+    elif [[ $post_magic_positionals -eq 1 ]]; then
+        # 2nd remaining → worktree name (subcommand still valid since it doesn't
+        # consume a remaining slot).
+        local -a wt_names
+        mapfile -t wt_names < <(_fnclaude_worktree_names)
+        COMPREPLY=( $(compgen -W "${wt_names[*]} ${subcommand_tokens[*]}" -- "$cur") )
     else
-        # Position 3+: directory only.
-        _filedir -d
+        # 3rd+ remaining → error at runtime; only subcommands remain valid.
+        COMPREPLY=( $(compgen -W "${subcommand_tokens[*]}" -- "$cur") )
     fi
 }
 

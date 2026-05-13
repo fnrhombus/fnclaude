@@ -68,10 +68,16 @@ complete -c fnclaude -s w -l worktree -r -a '(__fnclaude_worktree_names)' -d 'us
 # Positional argument completion
 # ---------------------------------------------------------------------------
 
-# Helper: true when no positional has been typed yet (position 1).
-function __fnclaude_no_positional
+# Token walker shared by all positional helpers. Sets three globals on
+# return (caller-scope, via `set` without -l):
+#   __fnclaude_magic_state         0=check model, 1=check effort, 2=magic done
+#   __fnclaude_post_magic_count    count of post-magic, non-subcommand positionals
+#   __fnclaude_first_pos           first post-magic positional (empty when none)
+function __fnclaude_walk_tokens
     set -l tokens (commandline -opc)
-    set -l positionals 0
+    set -g __fnclaude_magic_state 0
+    set -g __fnclaude_post_magic_count 0
+    set -g __fnclaude_first_pos ''
     set -l skip_next false
     for tok in $tokens[2..]
         if $skip_next
@@ -86,77 +92,88 @@ function __fnclaude_no_positional
         if string match -q -- '-*' $tok
             continue
         end
-        set positionals (math $positionals + 1)
+        # Subcommand-style positionals: eat a slot without affecting magic or
+        # the remaining-positional count.
+        if contains -- $tok resume res continue con
+            continue
+        end
+        # Magic at pos 1: model alias.
+        if test $__fnclaude_magic_state -eq 0
+            if contains -- $tok opus sonnet haiku
+                set __fnclaude_magic_state 1
+                continue
+            end
+            set __fnclaude_magic_state 2
+        else if test $__fnclaude_magic_state -eq 1
+            # Magic at pos 2: effort level (only after a model alias).
+            if contains -- $tok low medium high xhigh max
+                set __fnclaude_magic_state 2
+                continue
+            end
+            set __fnclaude_magic_state 2
+        end
+        # Post-magic positional.
+        set __fnclaude_post_magic_count (math $__fnclaude_post_magic_count + 1)
+        if test $__fnclaude_post_magic_count -eq 1
+            set __fnclaude_first_pos $tok
+        end
     end
-    test $positionals -eq 0
 end
 
-# Helper: true when exactly one positional has been typed and it was a model alias.
-function __fnclaude_after_model
-    set -l tokens (commandline -opc)
-    set -l positionals 0
-    set -l first_pos ''
-    set -l skip_next false
-    for tok in $tokens[2..]
-        if $skip_next
-            set skip_next false
-            continue
-        end
-        if contains -- $tok --also -A --agent -G --permission-mode -M --allowedTools -W --tmux -T --from-pr -P --remote-control -R --worktree -w
-            set skip_next true
-            continue
-        end
-        if string match -q -- '-*' $tok
-            continue
-        end
-        set positionals (math $positionals + 1)
-        if test $positionals -eq 1
-            set first_pos $tok
-        end
-    end
-    test $positionals -eq 1 && contains -- $first_pos opus sonnet haiku
+# Helper: at the position-1 slot (no post-magic positional typed AND magic not done).
+function __fnclaude_pos_model
+    __fnclaude_walk_tokens
+    test $__fnclaude_magic_state -eq 0 -a $__fnclaude_post_magic_count -eq 0
 end
 
-# Helper: true when two or more positionals have been typed (any further are dirs).
-function __fnclaude_need_dir
-    set -l tokens (commandline -opc)
-    set -l positionals 0
-    set -l skip_next false
-    for tok in $tokens[2..]
-        if $skip_next
-            set skip_next false
-            continue
-        end
-        if contains -- $tok --also -A --agent -G --permission-mode -M --allowedTools -W --tmux -T --from-pr -P --remote-control -R --worktree -w
-            set skip_next true
-            continue
-        end
-        if string match -q -- '-*' $tok
-            continue
-        end
-        set positionals (math $positionals + 1)
-    end
-    test $positionals -ge 2
+# Helper: at the position-2 slot for effort (pos1 was a model alias).
+function __fnclaude_pos_effort
+    __fnclaude_walk_tokens
+    test $__fnclaude_magic_state -eq 1 -a $__fnclaude_post_magic_count -eq 0
+end
+
+# Helper: at the cwd slot — no post-magic positional yet.
+function __fnclaude_pos_cwd
+    __fnclaude_walk_tokens
+    test $__fnclaude_post_magic_count -eq 0
+end
+
+# Helper: at the worktree slot — exactly one post-magic positional.
+function __fnclaude_pos_worktree
+    __fnclaude_walk_tokens
+    test $__fnclaude_post_magic_count -eq 1
+end
+
+# Helper: always (any positional slot may host a subcommand, max one).
+function __fnclaude_any_positional_slot
+    __fnclaude_walk_tokens
+    test $__fnclaude_post_magic_count -le 1
 end
 
 # Position 1: model alias.
-complete -c fnclaude -n '__fnclaude_no_positional' -a 'opus'   -d 'use claude-opus model'
-complete -c fnclaude -n '__fnclaude_no_positional' -a 'sonnet' -d 'use claude-sonnet model'
-complete -c fnclaude -n '__fnclaude_no_positional' -a 'haiku'  -d 'use claude-haiku model'
-# Position 1 can also be a directory.
-complete -c fnclaude -n '__fnclaude_no_positional' -a '(__fish_complete_directories)' -d 'launch directory'
+complete -c fnclaude -n '__fnclaude_pos_model' -a 'opus'   -d 'use claude-opus model'
+complete -c fnclaude -n '__fnclaude_pos_model' -a 'sonnet' -d 'use claude-sonnet model'
+complete -c fnclaude -n '__fnclaude_pos_model' -a 'haiku'  -d 'use claude-haiku model'
 
-# Position 2: effort level (when pos1 was a model alias).
-complete -c fnclaude -n '__fnclaude_after_model' -a 'low'    -d 'low effort'
-complete -c fnclaude -n '__fnclaude_after_model' -a 'medium' -d 'medium effort'
-complete -c fnclaude -n '__fnclaude_after_model' -a 'high'   -d 'high effort'
-complete -c fnclaude -n '__fnclaude_after_model' -a 'xhigh'  -d 'extra-high effort'
-complete -c fnclaude -n '__fnclaude_after_model' -a 'max'    -d 'maximum effort'
-# Position 2 can also be a directory.
-complete -c fnclaude -n '__fnclaude_after_model' -a '(__fish_complete_directories)' -d 'launch directory'
+# Position 2: effort level (only when pos1 was a model alias).
+complete -c fnclaude -n '__fnclaude_pos_effort' -a 'low'    -d 'low effort'
+complete -c fnclaude -n '__fnclaude_pos_effort' -a 'medium' -d 'medium effort'
+complete -c fnclaude -n '__fnclaude_pos_effort' -a 'high'   -d 'high effort'
+complete -c fnclaude -n '__fnclaude_pos_effort' -a 'xhigh'  -d 'extra-high effort'
+complete -c fnclaude -n '__fnclaude_pos_effort' -a 'max'    -d 'maximum effort'
 
-# Position 3+: directory only.
-complete -c fnclaude -n '__fnclaude_need_dir' -a '(__fish_complete_directories)' -d 'extra directory'
+# cwd slot (no post-magic positional typed yet): directory.
+complete -c fnclaude -n '__fnclaude_pos_cwd' -a '(__fish_complete_directories)' -d 'launch directory'
+
+# Worktree slot (one post-magic positional already typed): worktree basenames.
+complete -c fnclaude -n '__fnclaude_pos_worktree' -a '(__fnclaude_worktree_names)' -d 'worktree name'
+
+# Subcommands valid at any positional slot (max one per invocation; not
+# enforced here — runtime catches the second).
+complete -c fnclaude -n '__fnclaude_any_positional_slot' -a 'resume'   -d 'show session picker (--resume)'
+complete -c fnclaude -n '__fnclaude_any_positional_slot' -a 'res'      -d 'show session picker (--resume)'
+complete -c fnclaude -n '__fnclaude_any_positional_slot' -a 'continue' -d 'resume most recent session (--continue)'
+complete -c fnclaude -n '__fnclaude_any_positional_slot' -a 'con'      -d 'resume most recent session (--continue)'
 
 # ---------------------------------------------------------------------------
 # Register the same completions for the fnc alias.
@@ -181,10 +198,13 @@ complete -c fnc -s P -l from-pr            -d 'start from a PR (optional PR numb
 complete -c fnc -s R -l remote-control     -d 'enable remote control (optional name)'
 complete -c fnc -s T -l tmux -a 'classic'  -d 'set tmux mode (optional: classic)'
 complete -c fnc -s w -l worktree -r -a '(__fnclaude_worktree_names)' -d 'use git worktree'
-complete -c fnc -n '__fnclaude_no_positional' -a 'opus'   -d 'use claude-opus model'
-complete -c fnc -n '__fnclaude_no_positional' -a 'sonnet' -d 'use claude-sonnet model'
-complete -c fnc -n '__fnclaude_no_positional' -a 'haiku'  -d 'use claude-haiku model'
-complete -c fnc -n '__fnclaude_no_positional' -a '(__fish_complete_directories)' -d 'launch directory'
-complete -c fnc -n '__fnclaude_after_model' -a 'low medium high xhigh max' -d 'effort level'
-complete -c fnc -n '__fnclaude_after_model' -a '(__fish_complete_directories)' -d 'launch directory'
-complete -c fnc -n '__fnclaude_need_dir'    -a '(__fish_complete_directories)' -d 'extra directory'
+complete -c fnc -n '__fnclaude_pos_model' -a 'opus'   -d 'use claude-opus model'
+complete -c fnc -n '__fnclaude_pos_model' -a 'sonnet' -d 'use claude-sonnet model'
+complete -c fnc -n '__fnclaude_pos_model' -a 'haiku'  -d 'use claude-haiku model'
+complete -c fnc -n '__fnclaude_pos_effort' -a 'low medium high xhigh max' -d 'effort level'
+complete -c fnc -n '__fnclaude_pos_cwd' -a '(__fish_complete_directories)' -d 'launch directory'
+complete -c fnc -n '__fnclaude_pos_worktree' -a '(__fnclaude_worktree_names)' -d 'worktree name'
+complete -c fnc -n '__fnclaude_any_positional_slot' -a 'resume'   -d 'show session picker (--resume)'
+complete -c fnc -n '__fnclaude_any_positional_slot' -a 'res'      -d 'show session picker (--resume)'
+complete -c fnc -n '__fnclaude_any_positional_slot' -a 'continue' -d 'resume most recent session (--continue)'
+complete -c fnc -n '__fnclaude_any_positional_slot' -a 'con'      -d 'resume most recent session (--continue)'
