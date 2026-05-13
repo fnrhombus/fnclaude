@@ -2,6 +2,14 @@
 
 All notable changes to fnclaude are documented here. From v0.1.0 onward this file is maintained automatically by [release-please](https://github.com/googleapis/release-please) based on [conventional commits](https://www.conventionalcommits.org/) on `main`.
 
+## [1.1.0](https://github.com/fnrhombus/fnclaude/compare/v1.0.0...v1.1.0) (2026-05-13)
+
+
+### Features
+
+* add resume/continue subcommands (res/con shorthands) ([#6](https://github.com/fnrhombus/fnclaude/issues/6)) ([d260ed7](https://github.com/fnrhombus/fnclaude/commit/d260ed75ec0b0994119876c4b0c108b9fd6ea157))
+* sanitize user-supplied --name to path-safe chars ([#5](https://github.com/fnrhombus/fnclaude/issues/5)) ([3d59d4c](https://github.com/fnrhombus/fnclaude/commit/3d59d4cd8e433bd3309a362bcc47f691b7210323))
+
 ## [1.0.0](https://github.com/fnrhombus/fnclaude/compare/v0.1.0...v1.0.0) (2026-05-13)
 
 
