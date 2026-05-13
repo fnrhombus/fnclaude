@@ -51,6 +51,33 @@ Effectively: every PR merge to `main` ships a release. There's no "save up a few
 | `docs:`, `refactor:`, `perf:`, `revert:` | none | yes |
 | `chore:`, `ci:`, `build:`, `test:` | none | hidden |
 
+## Test-driven changes — HARD RULE
+
+**Every fix or feature PR must include a test that would fail without the code change.**
+
+Auto-merge is enabled on every non-draft PR (`.github/workflows/auto-merge.yml`); it fires the moment the `test` status check is green. Without TDD, a PR can land before any test captures the bug behavior — which means future regressions slip in silently. TDD is what closes that loop.
+
+The workflow:
+
+1. **Write the failing test first**, against the broken state. Run `mise run test`. Confirm it fails — and that the failure message points at the bug, not an unrelated assertion.
+2. **Write the minimum code to make it pass.** Re-run. Confirm green.
+3. **Sanity check** before pushing: stash your code change, re-run the test, watch it fail. Pop the stash, re-run, watch it pass. If the test passes both ways, the test isn't actually catching what you fixed — rewrite it.
+
+```sh
+git stash --keep-index -- <your-code-files>
+mise run test    # the new test should FAIL here
+git stash pop
+mise run test    # and pass here
+```
+
+When TDD is impractical, prefix the commit explicitly to opt out:
+
+- `docs:` — markdown / comments / inline docstrings, no behavior change
+- `ci:` / `build:` — workflows, mise tasks, packaging that aren't unit-testable
+- `refactor:` — pure restructuring with no observable behavior change (the existing test suite is your safety net)
+
+For `feat:`, `fix:`, `perf:` — TDD is non-negotiable. PR description should call out which test would have failed pre-fix.
+
 ## Commit conventions
 
 - **Format:** `<type>(<scope>): <subject>` per [conventional commits](https://www.conventionalcommits.org/). Subject under ~70 chars; body explains the *why*.
