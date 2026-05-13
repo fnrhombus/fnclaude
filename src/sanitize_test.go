@@ -7,10 +7,10 @@ import (
 
 func TestSanitizeForPath(t *testing.T) {
 	cases := []struct {
-		name    string
-		in      string
-		want    string
-		wantOk  bool
+		name   string
+		in     string
+		want   string
+		wantOk bool
 	}{
 		// ── passthrough ────────────────────────────────────────────────────
 		{"already safe lowercase", "hello-world", "hello-world", true},
