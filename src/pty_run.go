@@ -43,10 +43,21 @@ func (r *ringBuffer) Bytes() []byte {
 	return out
 }
 
-// crossCwdRe matches the message claude prints when the selected session
-// belongs to a different directory.  Compiled once at package init.
+// crossCwdRe matches the cd-and-resume line claude prints when the selected
+// session belongs to a different directory. Compiled once at package init.
+//
+// We can't anchor on the "This conversation is from a different directory."
+// preamble: claude's TUI emits cursor-right escapes (e.g. `\x1b[1C`) between
+// words instead of literal spaces, so that sentence is never plain-text in
+// the PTY stream. The "To resume, run:" line, by contrast, is rendered as
+// plain ASCII with real spaces, as is the `cd <path> && claude --resume <uuid>`
+// command — both anchors survive the TUI rendering intact.
+//
+// The `[\s\S]*?` between anchors swallows whatever ANSI / CR / cursor-move
+// goo appears between the two lines (varies by terminal width and TUI
+// layout — observed: `\x1b[K\r\x1b[1C\x1b[1B`).
 var crossCwdRe = regexp.MustCompile(
-	`This conversation is from a different directory\.\s+To resume, run:\s+cd (\S+) && claude --resume ([0-9a-fA-F-]{36})`,
+	`To resume, run:[\s\S]*?cd (\S+) && claude --resume ([0-9a-fA-F-]{36})`,
 )
 
 // detectCrossCwd searches tail (the ring buffer contents) for the cross-cwd
