@@ -24,7 +24,12 @@ jobs:
     steps:
       - name: Enable auto-merge (squash)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Using a PAT (not GITHUB_TOKEN) so the eventual merge fires
+          # downstream workflows. GitHub intentionally suppresses workflow
+          # triggers for GITHUB_TOKEN-actored events to prevent loops; that
+          # suppression breaks the release-please chain (no release PR
+          # opened after a feature PR merges).
+          GH_TOKEN: ${{ secrets.AUTOMERGE_PAT }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         # --repo is required: gh otherwise tries to detect the repo from a
         # local git checkout, but this job has none and bails with

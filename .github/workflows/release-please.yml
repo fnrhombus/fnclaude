@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+  # Manual trigger to catch up state when something stalled the chain.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -16,7 +18,10 @@ jobs:
       - id: release
         uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # PAT (not GITHUB_TOKEN) so the release PR's pull_request.opened
+          # event fires auto-merge.yml. GITHUB_TOKEN-created PRs don't
+          # trigger workflows, which is why release PRs used to sit open.
+          token: ${{ secrets.AUTOMERGE_PAT }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
@@ -27,7 +32,7 @@ jobs:
       - name: Enable auto-merge on release PR
         if: ${{ steps.release.outputs.prs_created == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.AUTOMERGE_PAT }}
         # --repo is required: this job has no checkout, so gh can't infer
         # the target repo and fails with "fatal: not a git repository".
         run: |
