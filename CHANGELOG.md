@@ -2,6 +2,37 @@
 
 All notable changes to fnclaude are documented here. From v0.1.0 onward this file is maintained automatically by [release-please](https://github.com/googleapis/release-please) based on [conventional commits](https://www.conventionalcommits.org/) on `main`.
 
+## [1.0.0](https://github.com/fnrhombus/fnclaude/compare/v0.1.0...v1.0.0) (2026-05-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* auto.tmux is now "never" | "worktree" only.
+
+### Features
+
+* **aur:** symlink /usr/bin/fnc -&gt; fnclaude in fnclaude-bin package ([422bc97](https://github.com/fnrhombus/fnclaude/commit/422bc975516d30f3cd94bc31951ffbb494511343))
+* drop auto.tmux="always"; defer non-fatal warnings until after claude exits ([fcb96a9](https://github.com/fnrhombus/fnclaude/commit/fcb96a9c5455ab254615e06473bd0624b286703f))
+* **worktree-match:** match by basename, branch, or worktree-stripped branch ([0e4c436](https://github.com/fnrhombus/fnclaude/commit/0e4c436bb7ff7925e17251f10882c8e693b10f83))
+
+
+### Bug Fixes
+
+* **auto-tmux:** inject --worktree alongside --tmux to satisfy claude's constraint ([e7f477f](https://github.com/fnrhombus/fnclaude/commit/e7f477fe87722af05fc761dd4a300331343555e6))
+* **resume:** anchor cross-cwd regex on plain-text portions of TUI output ([#3](https://github.com/fnrhombus/fnclaude/issues/3)) ([c01f245](https://github.com/fnrhombus/fnclaude/commit/c01f245caaa9189a18f0eddceadb123a78e0eb8f))
+
+
+### Documentation
+
+* promote shipped features (auto-name, cross-cwd resume, worktree intercept, completion) into Features; trim Roadmap ([d196d4e](https://github.com/fnrhombus/fnclaude/commit/d196d4e1fd4f624ce44dcf3761c9b6e6559f533f))
+* rewrite README as pitch-first with reference at the bottom ([d3081fd](https://github.com/fnrhombus/fnclaude/commit/d3081fdf002cd4368723e4249ff7ada29e8f546c))
+
+
+### Refactoring
+
+* organize Go source files under src/ ([8c92524](https://github.com/fnrhombus/fnclaude/commit/8c9252499a7f63cdb340aa0570dc403060bdd77d))
+* **worktree-match:** branch-first, then stripped-branch, then basename ([376aaad](https://github.com/fnrhombus/fnclaude/commit/376aaad6ca66d5fbba056626880caeb7751b8945))
+
 ## v0.1.0 (2026-05-11)
 
 Initial release. fnclaude is a Go rewrite of the long-running `cclaude` zsh function, promoted to its own cross-platform CLI with quality-of-life features layered on top.
