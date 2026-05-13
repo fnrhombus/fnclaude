@@ -843,6 +843,15 @@ func run() int {
 		a.Passthrough = append([]string{"--name", name}, a.Passthrough...)
 	}
 
+	// Sanitize any --name/-n value (user-supplied or injected) to a
+	// path-safe slug. Defense-in-depth before the value flows to claude
+	// and potentially into the worktree-paths plugin's WorktreeCreate hook.
+	var nameWarns []string
+	a.Passthrough, nameWarns = sanitizeNamesInPassthrough(a.Passthrough)
+	for _, w := range nameWarns {
+		warn("%s", w)
+	}
+
 	argv := buildArgv(a, shellCWD, cfg)
 
 	// Verify claude is on PATH before starting the PTY (gives a clean error).
