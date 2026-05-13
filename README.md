@@ -393,6 +393,22 @@ opt-out flag; unset the env var or config key to disable.
   pending a Windows verification pass.
 - **mise / aqua install path** — not yet packaged for either.
 
+## Contributing
+
+After cloning, install the pre-commit hook so unformatted Go sources can't sneak through:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+Or, if you use [mise](https://mise.jdx.dev/):
+
+```sh
+mise run setup
+```
+
+Both do the same thing — they point git at the tracked `.githooks/` directory. The hook itself (`.githooks/pre-commit`) runs `gofmt -l ./src` and blocks the commit if anything is unformatted. Fix with `gofmt -w ./src` and re-stage.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
