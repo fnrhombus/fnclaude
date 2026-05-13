@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # merge_group fires when a PR enters the merge queue. Without this trigger
+  # the queue's speculative commit gets no CI signal and PRs sit forever.
+  merge_group:
 
 permissions:
   contents: read
