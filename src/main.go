@@ -83,6 +83,17 @@ var shortOptional = map[byte]string{
 	'T': "--tmux",
 }
 
+// subcommandFlags maps subcommand-style positional tokens to the long flag
+// they expand to. Recognized only in positional territory (before the first
+// flag-shaped token); shadowed by a leading "./" prefix for literal-path
+// disambiguation, same as the model/effort magic.
+var subcommandFlags = map[string]string{
+	"resume":   "--resume",
+	"res":      "--resume",
+	"continue": "--continue",
+	"con":      "--continue",
+}
+
 // parseArgs parses os.Args[1:] and returns the structured result.
 // home is the value to use for the noop fallback (typically os.UserHomeDir()).
 //
@@ -95,6 +106,11 @@ var shortOptional = map[byte]string{
 //   - Position 3+: never magic; normal positional parsing (extra dirs).
 //
 // Effort without a preceding model alias is NOT magic — it becomes the cwd.
+//
+// Subcommand-style positionals (`resume`, `res`, `continue`, `con`) may appear
+// at ANY positional slot, independent of magic state. They consume the slot
+// without advancing magic, so `fnc resume opus xhigh` and `fnc opus xhigh resume`
+// parse equivalently. At most one subcommand per invocation; a second is an error.
 func parseArgs(argv []string, home string) (Args, error) {
 	var firstPath string
 	var extraDirs []string
@@ -107,6 +123,10 @@ func parseArgs(argv []string, home string) (Args, error) {
 	// Magic slots: filled at most once each, in strict order.
 	magicModel := ""
 	magicEffort := ""
+	// subcommandFlag is the long flag a subcommand-style positional expanded
+	// to (e.g. `resume` → `--resume`). Set at most once; a second hit errors.
+	subcommandFlag := ""
+	subcommandToken := ""
 
 	// magicState tracks where we are in the magic scanning sequence.
 	//   0 = position 1 (check model)
@@ -123,6 +143,20 @@ func parseArgs(argv []string, home string) (Args, error) {
 
 		// ── Positional collection (before first flag-shaped token) ───────────
 		if !inFlags && !strings.HasPrefix(arg, "-") {
+			// Subcommand check fires at every positional slot, independent of
+			// magic state. Doesn't advance magicState — `fnc resume opus xhigh`
+			// and `fnc opus xhigh resume` parse equivalently.
+			if flag, ok := subcommandFlags[arg]; ok {
+				if subcommandFlag != "" {
+					return Args{}, fmt.Errorf(
+						"fnclaude: only one subcommand allowed (got %q and %q)",
+						subcommandToken, arg)
+				}
+				subcommandFlag = flag
+				subcommandToken = arg
+				i++
+				continue
+			}
 			// Magic scanning at position 1: model alias check.
 			if magicState == 0 {
 				if modelAliases[arg] {
@@ -264,6 +298,12 @@ func parseArgs(argv []string, home string) (Args, error) {
 	}
 	if len(magicPrefix) > 0 {
 		passthrough = append(magicPrefix, passthrough...)
+	}
+
+	// Prepend the subcommand flag (--resume / --continue). Lands at index 0
+	// so it stays in front of any `--` separator a prompt brought in.
+	if subcommandFlag != "" {
+		passthrough = append([]string{subcommandFlag}, passthrough...)
 	}
 
 	// CWD fallback.
@@ -427,6 +467,12 @@ Magic positional words (positions 1+2 only, before any path):
   Position 2 — effort level: low | medium | high | xhigh | max → --effort <level>
                               (only honored when position 1 was a model alias)
   To use a directory literally named opus/max/etc., prefix with ./
+
+Subcommand positionals (any positional slot, max one per invocation):
+  resume | res        → --resume       (claude shows the session picker)
+  continue | con      → --continue     (resumes the most recent session)
+  Order-independent: "fnc resume opus" and "fnc opus resume" parse equivalently.
+  To use a directory literally named resume/continue/res/con, prefix with ./
 
 Positional paths:
   First path  → cwd to launch claude in (fallback ~/.claude/noop)
