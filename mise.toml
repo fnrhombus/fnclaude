@@ -13,3 +13,7 @@ run = "go test -count=1 ./..."
 description = "Build + symlink bin/fnclaude into ~/.local/bin/fnc-dev (deliberately separate from the AUR-installed `fnclaude` so dev builds don't shadow the release binary)"
 depends = ["build"]
 run = "ln -sf $PWD/bin/fnclaude $HOME/.local/bin/fnc-dev"
+
+[tasks.setup]
+description = "Install the .githooks/pre-commit hook. Run once after cloning."
+run = "git config core.hooksPath .githooks"
