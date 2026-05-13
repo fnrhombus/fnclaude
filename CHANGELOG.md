@@ -2,6 +2,20 @@
 
 All notable changes to fnclaude are documented here. From v0.1.0 onward this file is maintained automatically by [release-please](https://github.com/googleapis/release-please) based on [conventional commits](https://www.conventionalcommits.org/) on `main`.
 
+## [1.2.0](https://github.com/fnrhombus/fnclaude/compare/v1.1.0...v1.2.0) (2026-05-13)
+
+
+### Features
+
+* **config:** inject configurable env vars into claude's process env ([#11](https://github.com/fnrhombus/fnclaude/issues/11)) ([f0c0e3b](https://github.com/fnrhombus/fnclaude/commit/f0c0e3bddf16e4136a47d73de5b4d715be614ef3))
+
+
+### Bug Fixes
+
+* **ci:** pass --repo to gh in release-please workflow ([#13](https://github.com/fnrhombus/fnclaude/issues/13)) ([287e3aa](https://github.com/fnrhombus/fnclaude/commit/287e3aa295b927efd4af8e7ab0f492ed15c677d0))
+* **ci:** use AUTOMERGE_PAT so auto-merges trigger downstream workflows ([74c9890](https://github.com/fnrhombus/fnclaude/commit/74c98900a1a274969523684d85647c797315c5fd))
+* **ci:** use AUTOMERGE_PAT so auto-merges trigger downstream workflows ([#14](https://github.com/fnrhombus/fnclaude/issues/14)) ([74c9890](https://github.com/fnrhombus/fnclaude/commit/74c98900a1a274969523684d85647c797315c5fd))
+
 ## [1.1.0](https://github.com/fnrhombus/fnclaude/compare/v1.0.0...v1.1.0) (2026-05-13)
 
 
