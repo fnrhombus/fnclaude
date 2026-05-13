@@ -14,7 +14,8 @@ type Args struct {
 	// ~/.claude/noop when no positionals given).
 	CWD string
 
-	// ExtraDirs collects positional[1:] and all -A/--also values, in order.
+	// ExtraDirs collects all -A/--also values, in order. Positional 2 is now
+	// the worktree slot; -A is the only way to supply extra dirs.
 	ExtraDirs []string
 
 	// Passthrough is everything else, preserved in order, to be forwarded to
@@ -103,7 +104,6 @@ var subcommandFlags = map[string]string{
 //   - Position 2 (only when position 1 was a model alias): if it exactly matches
 //     an effort level → --effort <level>, magic off. Otherwise → position 2 is
 //     the cwd, magic off.
-//   - Position 3+: never magic; normal positional parsing (extra dirs).
 //
 // Effort without a preceding model alias is NOT magic — it becomes the cwd.
 //
@@ -111,6 +111,14 @@ var subcommandFlags = map[string]string{
 // at ANY positional slot, independent of magic state. They consume the slot
 // without advancing magic, so `fnc resume opus xhigh` and `fnc opus xhigh resume`
 // parse equivalently. At most one subcommand per invocation; a second is an error.
+//
+// After magic and subcommand positionals have been eaten, the remaining
+// non-flag positionals fill these slots in order:
+//   - 1st remaining → cwd (firstPath)
+//   - 2nd remaining → worktree name (sets WorktreeSet + WorktreeArg, same as -w)
+//   - 3rd+ remaining → error (cwd and worktree-name are the only two slots).
+//
+// Extra dirs are supplied exclusively via -A / --also.
 func parseArgs(argv []string, home string) (Args, error) {
 	var firstPath string
 	var extraDirs []string
@@ -183,8 +191,15 @@ func parseArgs(argv []string, home string) (Args, error) {
 			if !firstPathSet {
 				firstPath = arg
 				firstPathSet = true
+			} else if !worktreeSet {
+				// 2nd post-magic positional → worktree name (same semantics
+				// as -w <name>). A later -w in argv will overwrite this.
+				worktreeSet = true
+				worktreeArg = arg
 			} else {
-				extraDirs = append(extraDirs, arg)
+				return Args{}, fmt.Errorf(
+					"fnclaude: too many positional arguments (got %q; max is 2 — cwd and worktree-name)",
+					arg)
 			}
 			i++
 			continue
@@ -460,7 +475,7 @@ func wantsVersion(argv []string) bool {
 const helpText = `fnclaude — claude CLI launcher with quality-of-life features
 
 Usage:
-  fnclaude [MODEL] [EFFORT] [CWD [EXTRA_DIRS...]] [FLAGS...] [-- PROMPT]
+  fnclaude [MODEL] [EFFORT] [CWD [WORKTREE]] [FLAGS...] [-- PROMPT]
 
 Magic positional words (positions 1+2 only, before any path):
   Position 1 — model alias: opus | sonnet | haiku            → --model <alias>
@@ -474,13 +489,14 @@ Subcommand positionals (any positional slot, max one per invocation):
   Order-independent: "fnc resume opus" and "fnc opus resume" parse equivalently.
   To use a directory literally named resume/continue/res/con, prefix with ./
 
-Positional paths:
-  First path  → cwd to launch claude in (fallback ~/.claude/noop)
-  Extra paths → --add-dir; .mcp.json and .claude/settings.json auto-injected
-                if those files exist in the extra-dir
+Positional paths (max 2 after magic/subcommand tokens):
+  1st remaining → cwd to launch claude in (fallback ~/.claude/noop)
+  2nd remaining → worktree name (same as -w <name>); see Worktree intercept below
+  3rd+ remaining → error. Use -A/--also for extra dirs.
 
 fnclaude-owned flags:
-  -A, --also <dir>     additional extra-dir (repeatable; same effect as 2nd+ positional)
+  -A, --also <dir>     additional extra-dir (repeatable; the only way to add
+                       extra dirs — positional extras no longer supported)
       --no-tmux        suppress auto-tmux injection for this invocation
       --no-permissions suppress auto-DSP injection for this invocation
   -h, --help           show this help
@@ -525,7 +541,8 @@ Environment variables (override config; precedence: CLI > env > config > default
 Examples:
   fnclaude                                # interactive in ~/.claude/noop
   fnclaude opus max ~/src/proj            # opus + max effort, launch in ~/src/proj
-  fnclaude ~/src/a ~/src/b                # main + extra dir with mcp/settings injection
+  fnclaude ~/src/proj my-wt               # cwd + worktree (same as -w my-wt)
+  fnclaude ~/src/proj -A ~/src/extra      # main + extra dir (mcp/settings injected)
   fnclaude ~/src/proj -- "fix the bug"    # auto-name from prompt
   fnclaude -A docs/ ~/src/proj -V         # ergonomic flag form
 

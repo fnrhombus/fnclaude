@@ -28,22 +28,34 @@ func TestParseArgs_SinglePositional(t *testing.T) {
 	}
 }
 
-func TestParseArgs_ThreePositionals(t *testing.T) {
-	a, err := parseArgs([]string{"/proj/a", "/proj/b", "/proj/c"}, testHome)
+func TestParseArgs_TwoPositionals_CwdAndWorktree(t *testing.T) {
+	// After the breaking change: 1st positional → cwd, 2nd → worktree name.
+	a, err := parseArgs([]string{"/proj/a", "my-wt"}, testHome)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if a.CWD != "/proj/a" {
 		t.Errorf("CWD: got %q, want %q", a.CWD, "/proj/a")
 	}
-	want := []string{"/proj/b", "/proj/c"}
-	if len(a.ExtraDirs) != len(want) {
-		t.Fatalf("ExtraDirs len: got %d, want %d", len(a.ExtraDirs), len(want))
+	if !a.WorktreeSet {
+		t.Error("WorktreeSet: got false, want true")
 	}
-	for i, d := range want {
-		if a.ExtraDirs[i] != d {
-			t.Errorf("ExtraDirs[%d]: got %q, want %q", i, a.ExtraDirs[i], d)
-		}
+	if a.WorktreeArg != "my-wt" {
+		t.Errorf("WorktreeArg: got %q, want my-wt", a.WorktreeArg)
+	}
+	if len(a.ExtraDirs) != 0 {
+		t.Errorf("ExtraDirs: got %v, want empty (extras come from -A now)", a.ExtraDirs)
+	}
+}
+
+func TestParseArgs_ThreePositionalsErrors(t *testing.T) {
+	// Third post-magic positional is no longer valid (max is 2: cwd + worktree).
+	_, err := parseArgs([]string{"/proj/a", "/proj/b", "/proj/c"}, testHome)
+	if err == nil {
+		t.Fatal("expected error for 3 positionals; max is 2 (cwd + worktree-name)")
+	}
+	if !strings.Contains(err.Error(), "positional") {
+		t.Errorf("error should mention positional, got: %v", err)
 	}
 }
 
@@ -58,15 +70,19 @@ func TestParseArgs_ZeroPositionals_Fallback(t *testing.T) {
 }
 
 func TestParseArgs_MixedPositionalAndAlso(t *testing.T) {
-	a, err := parseArgs([]string{"/p/main", "/p/extra1", "--also", "/p/extra2", "-A", "/p/extra3"}, testHome)
+	// Positional 1 → cwd, positional 2 → worktree (NOT an extra dir anymore).
+	// All extras must come from -A / --also.
+	a, err := parseArgs([]string{"/p/main", "my-wt", "--also", "/p/extra1", "-A", "/p/extra2"}, testHome)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if a.CWD != "/p/main" {
 		t.Errorf("CWD: got %q", a.CWD)
 	}
-	// extra1 comes from positional, extra2 from --also, extra3 from -A
-	want := []string{"/p/extra1", "/p/extra2", "/p/extra3"}
+	if a.WorktreeArg != "my-wt" {
+		t.Errorf("WorktreeArg: got %q, want my-wt", a.WorktreeArg)
+	}
+	want := []string{"/p/extra1", "/p/extra2"}
 	if len(a.ExtraDirs) != len(want) {
 		t.Fatalf("ExtraDirs: got %v, want %v", a.ExtraDirs, want)
 	}
@@ -203,7 +219,8 @@ func TestParseArgs_Magic_ModelEffortPath(t *testing.T) {
 }
 
 func TestParseArgs_Magic_EffortAloneIsPath(t *testing.T) {
-	// fnc max ~/p → cwd='max', extra dir=~/p (effort alone is not magic)
+	// fnc max /proj/p → cwd='max', worktree=/proj/p (effort alone is not magic;
+	// 2nd positional becomes worktree name under the new rules).
 	a, err := parseArgs([]string{"max", "/proj/p"}, testHome)
 	if err != nil {
 		t.Fatal(err)
@@ -211,8 +228,11 @@ func TestParseArgs_Magic_EffortAloneIsPath(t *testing.T) {
 	if a.CWD != "max" {
 		t.Errorf("CWD: got %q, want 'max'", a.CWD)
 	}
-	if len(a.ExtraDirs) != 1 || a.ExtraDirs[0] != "/proj/p" {
-		t.Errorf("ExtraDirs: got %v, want [/proj/p]", a.ExtraDirs)
+	if a.WorktreeArg != "/proj/p" {
+		t.Errorf("WorktreeArg: got %q, want '/proj/p'", a.WorktreeArg)
+	}
+	if len(a.ExtraDirs) != 0 {
+		t.Errorf("ExtraDirs: got %v, want empty", a.ExtraDirs)
 	}
 	if len(a.Passthrough) != 0 {
 		t.Errorf("Passthrough: got %v, want empty", a.Passthrough)
@@ -220,8 +240,8 @@ func TestParseArgs_Magic_EffortAloneIsPath(t *testing.T) {
 }
 
 func TestParseArgs_Magic_ModelThenNonEffortBecomesPath(t *testing.T) {
-	// fnc opus sonnet ~/p → --model opus, cwd='sonnet', extra dir=~/p
-	// (pos 2 'sonnet' is not an effort level → becomes cwd)
+	// fnc opus sonnet /proj/p → --model opus, cwd='sonnet', worktree='/proj/p'
+	// (pos 2 'sonnet' is not an effort level → becomes cwd; pos 3 → worktree)
 	a, err := parseArgs([]string{"opus", "sonnet", "/proj/p"}, testHome)
 	if err != nil {
 		t.Fatal(err)
@@ -232,13 +252,19 @@ func TestParseArgs_Magic_ModelThenNonEffortBecomesPath(t *testing.T) {
 	if a.CWD != "sonnet" {
 		t.Errorf("CWD: got %q, want 'sonnet'", a.CWD)
 	}
-	if len(a.ExtraDirs) != 1 || a.ExtraDirs[0] != "/proj/p" {
-		t.Errorf("ExtraDirs: got %v, want [/proj/p]", a.ExtraDirs)
+	if a.WorktreeArg != "/proj/p" {
+		t.Errorf("WorktreeArg: got %q, want '/proj/p'", a.WorktreeArg)
+	}
+	if len(a.ExtraDirs) != 0 {
+		t.Errorf("ExtraDirs: got %v, want empty", a.ExtraDirs)
 	}
 }
 
-func TestParseArgs_Magic_ModelEffortThenExtraDirs(t *testing.T) {
-	// fnc opus max sonnet ~/p → --model opus --effort max, cwd='sonnet', extra dir=~/p
+func TestParseArgs_Magic_ModelEffortThenCwdAndWorktree(t *testing.T) {
+	// fnc opus max sonnet /proj/p →
+	//   --model opus --effort max, cwd='sonnet', worktree='/proj/p'.
+	// Under the new rules, the 4th token (2nd post-magic positional) is the
+	// worktree name, not an extra dir.
 	a, err := parseArgs([]string{"opus", "max", "sonnet", "/proj/p"}, testHome)
 	if err != nil {
 		t.Fatal(err)
@@ -255,8 +281,30 @@ func TestParseArgs_Magic_ModelEffortThenExtraDirs(t *testing.T) {
 	if a.CWD != "sonnet" {
 		t.Errorf("CWD: got %q, want 'sonnet'", a.CWD)
 	}
-	if len(a.ExtraDirs) != 1 || a.ExtraDirs[0] != "/proj/p" {
-		t.Errorf("ExtraDirs: got %v, want [/proj/p]", a.ExtraDirs)
+	if a.WorktreeArg != "/proj/p" {
+		t.Errorf("WorktreeArg: got %q, want '/proj/p'", a.WorktreeArg)
+	}
+	if len(a.ExtraDirs) != 0 {
+		t.Errorf("ExtraDirs: got %v, want empty", a.ExtraDirs)
+	}
+}
+
+func TestParseArgs_Magic_ModelEffortThenCwdAndAlsoExtras(t *testing.T) {
+	// Same magic prefix but extras come via -A now.
+	// fnc opus max /proj/main -A /proj/extra
+	a, err := parseArgs([]string{"opus", "max", "/proj/main", "-A", "/proj/extra"}, testHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"--model", "opus", "--effort", "max"}
+	if len(a.Passthrough) != len(want) {
+		t.Fatalf("Passthrough: got %v, want %v", a.Passthrough, want)
+	}
+	if a.CWD != "/proj/main" {
+		t.Errorf("CWD: got %q, want /proj/main", a.CWD)
+	}
+	if len(a.ExtraDirs) != 1 || a.ExtraDirs[0] != "/proj/extra" {
+		t.Errorf("ExtraDirs: got %v, want [/proj/extra]", a.ExtraDirs)
 	}
 }
 
@@ -295,7 +343,9 @@ func TestParseArgs_Magic_ModelAndEffort_NoPath_FallsBackToNoop(t *testing.T) {
 }
 
 func TestParseArgs_Magic_NonModelFirstTurnsOffMagic(t *testing.T) {
-	// fnc /proj sonnet → cwd=/proj, extra dir=sonnet (magic off after pos 1 non-match)
+	// fnc /proj sonnet → cwd=/proj, worktree=sonnet
+	// (magic off after pos 1 non-match; 2nd positional now fills worktree slot,
+	// not extra dir).
 	a, err := parseArgs([]string{"/proj/p", "sonnet"}, testHome)
 	if err != nil {
 		t.Fatal(err)
@@ -303,8 +353,11 @@ func TestParseArgs_Magic_NonModelFirstTurnsOffMagic(t *testing.T) {
 	if a.CWD != "/proj/p" {
 		t.Errorf("CWD: got %q", a.CWD)
 	}
-	if len(a.ExtraDirs) != 1 || a.ExtraDirs[0] != "sonnet" {
-		t.Errorf("ExtraDirs: got %v, want [sonnet]", a.ExtraDirs)
+	if a.WorktreeArg != "sonnet" {
+		t.Errorf("WorktreeArg: got %q, want 'sonnet'", a.WorktreeArg)
+	}
+	if len(a.ExtraDirs) != 0 {
+		t.Errorf("ExtraDirs: got %v, want empty", a.ExtraDirs)
 	}
 	if len(a.Passthrough) != 0 {
 		t.Errorf("Passthrough: got %v, want empty", a.Passthrough)
