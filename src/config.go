@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 type Config struct {
 	Name NameConfig
 	Auto AutoConfig
+	Exec ExecConfig
 }
 
 // NameConfig holds fields from the [name] TOML section.
@@ -23,6 +25,16 @@ type NameConfig struct {
 	Model              string
 	Timeout            time.Duration
 	QuietMissingAPIKey bool
+}
+
+// ExecConfig holds fields from the [exec] TOML section.
+type ExecConfig struct {
+	// Env is the set of additional environment variables to inject into the
+	// claude child process's environment, sourced from [exec.env] in the
+	// config file. These are appended AFTER os.Environ() when fnclaude exec's
+	// claude, so by Go's exec.Command last-wins rule a configured key beats
+	// any inherited value with the same name.
+	Env map[string]string
 }
 
 // AutoConfig holds fields from the [auto] TOML section.
@@ -52,6 +64,9 @@ type rawConfig struct {
 		IDE                        string `toml:"ide"`
 		DangerouslySkipPermissions bool   `toml:"dangerously_skip_permissions"`
 	} `toml:"auto"`
+	Exec struct {
+		Env map[string]string `toml:"env"`
+	} `toml:"exec"`
 }
 
 // defaultConfig returns the built-in defaults.
@@ -118,6 +133,9 @@ func loadConfig() Config {
 				cfg.Auto.IDE = raw.Auto.IDE
 			}
 			cfg.Auto.DangerouslySkipPermissions = raw.Auto.DangerouslySkipPermissions
+			if len(raw.Exec.Env) > 0 {
+				cfg.Exec.Env = raw.Exec.Env
+			}
 		}
 	}
 
@@ -173,4 +191,28 @@ func parseBoolEnv(v string) bool {
 	default:
 		return false
 	}
+}
+
+// envFromConfig returns cfg.Exec.Env rendered as a sorted slice of "KEY=VALUE"
+// strings, ready to append to os.Environ() before handing to exec.Command.
+// Sort order is deterministic so the merged env (and any debug output) is
+// stable across runs.
+//
+// Precedence rule: callers append this AFTER os.Environ(); Go's exec.Command
+// resolves duplicate keys by last-wins, so a key configured here overrides
+// the inherited value of the same name.
+func envFromConfig(cfg Config) []string {
+	if len(cfg.Exec.Env) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(cfg.Exec.Env))
+	for k := range cfg.Exec.Env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, k+"="+cfg.Exec.Env[k])
+	}
+	return out
 }
