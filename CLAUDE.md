@@ -94,3 +94,14 @@ For `feat:`, `fix:`, `perf:` — TDD is non-negotiable. PR description should ca
 - `.github/workflows/` — `test`, `release-please`, `release`
 - `mise.toml` — Go pin + build/test/install-dev tasks
 - `.goreleaser.yaml` + `release-please-config.json` + `.release-please-manifest.json` — release machinery
+
+## Cross-repo invariants
+
+### Name sanitizer — keep in sync with `claude-code-worktree-paths`
+
+`src/sanitize.go`'s `sanitizeForPath` and the plugin's `src/sanitize.ts` `sanitizeForPath` must produce the **same output for the same input**. They're independent implementations of the same allowlist (`[A-Za-z0-9._-]`, collapse runs of forbidden chars to `-`, strip leading `[-.]`, strip trailing `-`, throw/empty when the result is empty) — diverging means a name that fnclaude lets through here will get rewritten (or rejected) by the plugin on the other side, surprising the user.
+
+When changing one, change the other in the same session:
+
+- fnclaude: `src/sanitize.go` + `src/sanitize_test.go`
+- plugin: [`claude-code-worktree-paths/src/sanitize.ts`](https://github.com/fnrhombus/claude-code-worktree-paths/blob/main/src/sanitize.ts) + `test/sanitize.test.ts`
