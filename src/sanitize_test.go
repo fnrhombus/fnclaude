@@ -20,7 +20,6 @@ func TestSanitizeForPath(t *testing.T) {
 
 		// ── single forbidden chars become hyphens ─────────────────────────
 		{"space", "foo bar", "foo-bar", true},
-		{"slash", "foo/bar", "foo-bar", true},
 		{"backslash", "foo\\bar", "foo-bar", true},
 		{"colon", "foo:bar", "foo-bar", true},
 		{"star", "foo*bar", "foo-bar", true},
@@ -29,10 +28,16 @@ func TestSanitizeForPath(t *testing.T) {
 		{"tilde", "foo~bar", "foo-bar", true},
 		{"caret", "foo^bar", "foo-bar", true},
 
+		// ── slash now allowed (git-style nested refs) ─────────────────────
+		{"slash preserved", "foo/bar", "foo/bar", true},
+		{"nested feature branch", "feat/foo", "feat/foo", true},
+		{"deeply nested", "team/x/y/z", "team/x/y/z", true},
+		{"mixed dashes and slashes", "foo-/-bar", "foo-/-bar", true},
+
 		// ── runs collapse ──────────────────────────────────────────────────
 		{"multi-space", "foo   bar", "foo-bar", true},
 		{"mixed punct", "foo!@#$bar", "foo-bar", true},
-		{"double slash", "foo//bar", "foo-bar", true},
+		{"double slash collapsed", "foo//bar", "foo/bar", true},
 		{"run of hyphens", "foo---bar", "foo-bar", true},
 
 		// ── trim leading/trailing ──────────────────────────────────────────
@@ -43,6 +48,7 @@ func TestSanitizeForPath(t *testing.T) {
 		{"leading mixed", ".-.-foo", "foo", true},
 		{"trailing hyphen", "foo-", "foo", true},
 		{"trailing slash", "foo/", "foo", true},
+		{"trailing slashes collapse and strip", "foo///", "foo", true},
 
 		// ── middle dots preserved ─────────────────────────────────────────
 		{"middle dots", "foo.bar.baz", "foo.bar.baz", true},
@@ -57,7 +63,14 @@ func TestSanitizeForPath(t *testing.T) {
 		{"only punct", "???", "", false},
 		{"only hyphens", "---", "", false},
 		{"only dots", "...", "", false},
+		{"only slashes", "///", "", false},
 		{"only non-ASCII", "日本語", "", false},
+
+		// ── path escape / git ref-format rejections ───────────────────────
+		{"leading slash", "/foo", "", false},
+		{"path escape via dotdot", "foo/../bar", "", false},
+		{"double-dot anywhere", "foo..bar", "", false},
+		{"trailing double-dot", "foo..", "", false},
 
 		// ── control chars ──────────────────────────────────────────────────
 		{"NUL", "foo\x00bar", "foo-bar", true},
@@ -98,14 +111,14 @@ func TestSanitizeNamesInPassthrough(t *testing.T) {
 		{
 			name:         "dirty --name split form",
 			in:           []string{"--name", "foo/bar baz", "--", "go"},
-			wantOut:      []string{"--name", "foo-bar-baz", "--", "go"},
+			wantOut:      []string{"--name", "foo/bar-baz", "--", "go"},
 			wantWarnings: 1,
 		},
 		{
-			name:         "dirty --name= form",
+			name:         "clean --name= form with slash",
 			in:           []string{"--name=foo/bar", "--", "go"},
-			wantOut:      []string{"--name=foo-bar", "--", "go"},
-			wantWarnings: 1,
+			wantOut:      []string{"--name=foo/bar", "--", "go"},
+			wantWarnings: 0,
 		},
 		{
 			name:         "dirty -n split form",
@@ -114,10 +127,10 @@ func TestSanitizeNamesInPassthrough(t *testing.T) {
 			wantWarnings: 1,
 		},
 		{
-			name:         "dirty -n= form",
+			name:         "clean -n= form with slash",
 			in:           []string{"-n=foo/bar"},
-			wantOut:      []string{"-n=foo-bar"},
-			wantWarnings: 1,
+			wantOut:      []string{"-n=foo/bar"},
+			wantWarnings: 0,
 		},
 		{
 			name:         "all-unsafe value passes through with warning",
@@ -126,10 +139,10 @@ func TestSanitizeNamesInPassthrough(t *testing.T) {
 			wantWarnings: 1,
 		},
 		{
-			name:         "multiple names sanitized independently",
+			name:         "multiple names: slash form clean, space form sanitized",
 			in:           []string{"--name=foo/bar", "-n", "baz qux"},
-			wantOut:      []string{"--name=foo-bar", "-n", "baz-qux"},
-			wantWarnings: 2,
+			wantOut:      []string{"--name=foo/bar", "-n", "baz-qux"},
+			wantWarnings: 1,
 		},
 		{
 			name:         "--name at end with no value passes through untouched",
