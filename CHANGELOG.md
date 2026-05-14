@@ -2,6 +2,13 @@
 
 All notable changes to fnclaude are documented here. From v0.1.0 onward this file is maintained automatically by [release-please](https://github.com/googleapis/release-please) based on [conventional commits](https://www.conventionalcommits.org/) on `main`.
 
+## [1.4.0](https://github.com/fnrhombus/fnclaude/compare/v1.3.0...v1.4.0) (2026-05-14)
+
+
+### Features
+
+* add fork subcommand for --resume + --fork-session ([#19](https://github.com/fnrhombus/fnclaude/issues/19)) ([941ce6f](https://github.com/fnrhombus/fnclaude/commit/941ce6f9bb85495ce4f535547258e5c9b76cd0fa))
+
 ## [1.3.0](https://github.com/fnrhombus/fnclaude/compare/v1.2.0...v1.3.0) (2026-05-14)
 
 
