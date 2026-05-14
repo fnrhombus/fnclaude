@@ -2,6 +2,13 @@
 
 All notable changes to fnclaude are documented here. From v0.1.0 onward this file is maintained automatically by [release-please](https://github.com/googleapis/release-please) based on [conventional commits](https://www.conventionalcommits.org/) on `main`.
 
+## [1.3.0](https://github.com/fnrhombus/fnclaude/compare/v1.2.0...v1.3.0) (2026-05-14)
+
+
+### Features
+
+* allow / in worktree/branch names, block path escape ([#17](https://github.com/fnrhombus/fnclaude/issues/17)) ([aa44de8](https://github.com/fnrhombus/fnclaude/commit/aa44de8249487b9872b370b71daa49520561ebbb))
+
 ## [1.2.0](https://github.com/fnrhombus/fnclaude/compare/v1.1.0...v1.2.0) (2026-05-13)
 
 
