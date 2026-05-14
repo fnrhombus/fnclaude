@@ -7,22 +7,42 @@ import (
 )
 
 var (
-	rePathSafeBad = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+	rePathSafeBad = regexp.MustCompile(`[^A-Za-z0-9._/-]+`)
 	reDashRun     = regexp.MustCompile(`-{2,}`)
+	reSlashRun    = regexp.MustCompile(`/{2,}`)
 )
 
 // sanitizeForPath produces a slug safe for both filesystem path components
-// and git ref names: collapses anything outside [A-Za-z0-9._-] to '-',
-// dedupes hyphen runs, strips leading [-.] and trailing -.
+// and git ref names: collapses anything outside [A-Za-z0-9._/-] to '-',
+// dedupes hyphen and slash runs, strips leading [-.] and trailing [-/].
+// '/' is allowed so git-style nested refs (feat/foo, team/x/y/z) pass
+// through and produce nested worktree paths.
 //
-// Returns ("", false) when the result is empty — caller decides whether to
-// reject, fall back, or pass the original through with a warning.
+// Returns ("", false) when:
+//   - the input is empty
+//   - the input starts with '/' (would escape the configured path prefix)
+//   - the result reduces to empty after sanitization
+//   - the result contains a ".." substring (git ref-format rule; also
+//     blocks foo/../bar style path escape)
+//
+// Caller decides whether to reject, fall back, or pass the original
+// through with a warning.
 func sanitizeForPath(s string) (string, bool) {
+	if s == "" {
+		return "", false
+	}
+	if strings.HasPrefix(s, "/") {
+		return "", false
+	}
 	s = rePathSafeBad.ReplaceAllString(s, "-")
 	s = reDashRun.ReplaceAllString(s, "-")
+	s = reSlashRun.ReplaceAllString(s, "/")
 	s = strings.TrimLeft(s, "-.")
-	s = strings.TrimRight(s, "-")
+	s = strings.TrimRight(s, "-/")
 	if s == "" {
+		return "", false
+	}
+	if strings.Contains(s, "..") {
 		return "", false
 	}
 	return s, true
