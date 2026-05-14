@@ -242,6 +242,27 @@ var reconstructCases = []reconstructCase{
 		uuid:     "68aa15ae-af23-4c7a-b59f-5cee07c61790",
 		want:     []string{"opus", "xhigh", "/dest/dir", "--resume", "68aa15ae-af23-4c7a-b59f-5cee07c61790", "--flag"},
 	},
+	// fork subcommand keyword is a non-magic non-flag token, so reconstructArgv
+	// drops it (phase 2 path-skip). On relaunch, claude resumes the new (forked)
+	// session by UUID — we don't want to fork *again* in the redirected cwd.
+	{
+		name:     "fork subcommand dropped on relaunch",
+		origArgs: []string{"fork"},
+		dest:     "/dest/dir",
+		uuid:     "68aa15ae-af23-4c7a-b59f-5cee07c61790",
+		want:     []string{"/dest/dir", "--resume", "68aa15ae-af23-4c7a-b59f-5cee07c61790"},
+	},
+	{
+		name:     "fk shorthand also dropped",
+		origArgs: []string{"fk", "opus"},
+		dest:     "/dest/dir",
+		uuid:     "68aa15ae-af23-4c7a-b59f-5cee07c61790",
+		// opus is magic and survives Phase 1 — no wait, "fk" is first and not
+		// magic, so Phase 1 collects nothing, then Phase 2 skips both "fk" and
+		// "opus". This mirrors the pre-existing behavior for `resume opus`
+		// (cross-cwd relaunch loses magic words placed AFTER a non-magic token).
+		want: []string{"/dest/dir", "--resume", "68aa15ae-af23-4c7a-b59f-5cee07c61790"},
+	},
 }
 
 func TestReconstructArgv(t *testing.T) {
