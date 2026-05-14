@@ -84,15 +84,20 @@ var shortOptional = map[byte]string{
 	'T': "--tmux",
 }
 
-// subcommandFlags maps subcommand-style positional tokens to the long flag
+// subcommandFlags maps subcommand-style positional tokens to the long flags
 // they expand to. Recognized only in positional territory (before the first
 // flag-shaped token); shadowed by a leading "./" prefix for literal-path
 // disambiguation, same as the model/effort magic.
-var subcommandFlags = map[string]string{
-	"resume":   "--resume",
-	"res":      "--resume",
-	"continue": "--continue",
-	"con":      "--continue",
+//
+// `fork` expands to two flags because --fork-session requires --resume (or
+// --continue) — fnc bundles them so the user doesn't have to.
+var subcommandFlags = map[string][]string{
+	"resume":   {"--resume"},
+	"res":      {"--resume"},
+	"continue": {"--continue"},
+	"con":      {"--continue"},
+	"fork":     {"--resume", "--fork-session"},
+	"fk":       {"--resume", "--fork-session"},
 }
 
 // parseArgs parses os.Args[1:] and returns the structured result.
@@ -131,9 +136,10 @@ func parseArgs(argv []string, home string) (Args, error) {
 	// Magic slots: filled at most once each, in strict order.
 	magicModel := ""
 	magicEffort := ""
-	// subcommandFlag is the long flag a subcommand-style positional expanded
-	// to (e.g. `resume` → `--resume`). Set at most once; a second hit errors.
-	subcommandFlag := ""
+	// subcommandExpansion is the long-flag slice a subcommand-style positional
+	// expanded to (e.g. `resume` → `[--resume]`, `fork` → `[--resume,
+	// --fork-session]`). Set at most once; a second hit errors.
+	var subcommandExpansion []string
 	subcommandToken := ""
 
 	// magicState tracks where we are in the magic scanning sequence.
@@ -154,13 +160,13 @@ func parseArgs(argv []string, home string) (Args, error) {
 			// Subcommand check fires at every positional slot, independent of
 			// magic state. Doesn't advance magicState — `fnc resume opus xhigh`
 			// and `fnc opus xhigh resume` parse equivalently.
-			if flag, ok := subcommandFlags[arg]; ok {
-				if subcommandFlag != "" {
+			if flags, ok := subcommandFlags[arg]; ok {
+				if subcommandExpansion != nil {
 					return Args{}, fmt.Errorf(
 						"fnclaude: only one subcommand allowed (got %q and %q)",
 						subcommandToken, arg)
 				}
-				subcommandFlag = flag
+				subcommandExpansion = flags
 				subcommandToken = arg
 				i++
 				continue
@@ -315,10 +321,11 @@ func parseArgs(argv []string, home string) (Args, error) {
 		passthrough = append(magicPrefix, passthrough...)
 	}
 
-	// Prepend the subcommand flag (--resume / --continue). Lands at index 0
-	// so it stays in front of any `--` separator a prompt brought in.
-	if subcommandFlag != "" {
-		passthrough = append([]string{subcommandFlag}, passthrough...)
+	// Prepend the subcommand expansion (e.g. --resume, or --resume +
+	// --fork-session for `fork`). Lands at index 0 so the flags stay in front
+	// of any `--` separator a prompt brought in.
+	if len(subcommandExpansion) > 0 {
+		passthrough = append(append([]string{}, subcommandExpansion...), passthrough...)
 	}
 
 	// CWD fallback.
@@ -484,10 +491,11 @@ Magic positional words (positions 1+2 only, before any path):
   To use a directory literally named opus/max/etc., prefix with ./
 
 Subcommand positionals (any positional slot, max one per invocation):
-  resume | res        → --resume       (claude shows the session picker)
-  continue | con      → --continue     (resumes the most recent session)
+  resume | res        → --resume                  (session picker)
+  continue | con      → --continue                (resume most recent)
+  fork | fk           → --resume --fork-session   (picker; fork on select)
   Order-independent: "fnc resume opus" and "fnc opus resume" parse equivalently.
-  To use a directory literally named resume/continue/res/con, prefix with ./
+  To use a directory literally named one of these, prefix with ./
 
 Positional paths (max 2 after magic/subcommand tokens):
   1st remaining → cwd to launch claude in (fallback ~/.claude/noop)
